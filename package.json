@@ -1,0 +1,29 @@
+{
+  "name": "dashboard-log-car",
+  "version": "1.0.0",
+  "description": "Sistema de Faturamento Logístico - Dashboard Web",
+  "main": "backend/server.js",
+  "scripts": {
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm start",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "backend:start": "cd backend && npm start",
+    "frontend:build": "cd frontend && npm run build",
+    "build": "npm run install:all && npm run frontend:build",
+    "start": "npm run backend:start"
+  },
+  "keywords": [
+    "logistics",
+    "billing",
+    "invoice",
+    "dashboard"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
+
+

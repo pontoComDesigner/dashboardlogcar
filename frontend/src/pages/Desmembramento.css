@@ -1,0 +1,103 @@
+.info-box {
+  background-color: #e7f3ff;
+  border-left: 4px solid #2196F3;
+  padding: 15px 20px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.info-box p {
+  margin: 5px 0;
+}
+
+.info-text {
+  color: #666;
+  font-size: 14px;
+}
+
+.notas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.nota-card {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+}
+
+.nota-card:hover {
+  border-color: #2196F3;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.2);
+  transform: translateY(-2px);
+}
+
+.nota-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.nota-card-header h3 {
+  margin: 0;
+  color: #2196F3;
+  font-size: 20px;
+}
+
+.serie {
+  background-color: #e3f2fd;
+  color: #1976D2;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.nota-card-body {
+  flex: 1;
+  margin-bottom: 15px;
+}
+
+.nota-card-body p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.nota-card-body strong {
+  color: #666;
+  margin-right: 5px;
+}
+
+.data-emissao {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+  color: #999;
+  font-size: 12px;
+}
+
+.nota-card-footer {
+  margin-top: auto;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.modal-large {
+  max-width: 1200px;
+  width: 95%;
+}
+
+
