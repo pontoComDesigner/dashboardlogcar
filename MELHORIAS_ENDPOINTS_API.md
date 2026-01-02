@@ -140,3 +140,5 @@ curl -X GET \
 - [ ] Adicionar suporte a telefones do cliente (quando disponível)
 - [ ] Adicionar suporte a itens do pedido no LogCar App (se necessário)
 
+
+

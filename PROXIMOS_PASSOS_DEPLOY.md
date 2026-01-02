@@ -250,3 +250,5 @@ Isso é normal em instâncias gratuitas. Considere migrar para PostgreSQL.
 - **Backup**: Se usar SQLite, considere fazer backup periódico dos dados
 
 
+
+

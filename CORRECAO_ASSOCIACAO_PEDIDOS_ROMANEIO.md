@@ -95,3 +95,5 @@ node scripts/criar-tabela-romaneio-cargas.js
 - O sistema agora suporta ambos os tipos no mesmo romaneio
 - O `numeroPedido` retornado pelo endpoint `/api/erp/pedidos/:notaFiscalId` é na verdade o `numeroCarga`
 
+
+
