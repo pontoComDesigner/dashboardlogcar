@@ -24,9 +24,12 @@ router.get('/', (req, res) => {
     
     let query = `
       SELECT r.*, 
-        COUNT(rp.pedidoId) as totalPedidos
+        COALESCE(
+          (SELECT COUNT(*) FROM romaneio_pedidos WHERE romaneioId = r.id) +
+          (SELECT COUNT(*) FROM romaneio_cargas WHERE romaneioId = r.id),
+          0
+        ) as totalPedidos
       FROM romaneios r
-      LEFT JOIN romaneio_pedidos rp ON r.id = rp.romaneioId
       WHERE 1=1
     `;
     const params = [];
@@ -36,7 +39,7 @@ router.get('/', (req, res) => {
       params.push(status);
     }
     
-    query += ' GROUP BY r.id ORDER BY r.createdAt DESC';
+    query += ' ORDER BY r.createdAt DESC';
     
     db.all(query, params, (err, romaneios) => {
       if (err) {
@@ -88,9 +91,16 @@ router.get('/:id', (req, res) => {
         });
       }
       
-      // Buscar pedidos do romaneio
+      // Buscar pedidos e cargas do romaneio
+      // Primeiro buscar pedidos
       db.all(`
-        SELECT rp.*, p.numeroPedido, p.clienteNome, p.clienteEndereco, p.valorTotal, p.status as pedidoStatus
+        SELECT rp.*, 
+          p.numeroPedido, 
+          p.clienteNome, 
+          p.clienteEndereco, 
+          p.valorTotal, 
+          p.status as pedidoStatus,
+          'pedido' as tipo
         FROM romaneio_pedidos rp
         INNER JOIN pedidos p ON rp.pedidoId = p.id
         WHERE rp.romaneioId = ?
@@ -104,12 +114,53 @@ router.get('/:id', (req, res) => {
           });
         }
         
-        res.json({
-          success: true,
-          romaneio: {
-            ...romaneio,
-            pedidos: pedidos || []
+        // Agora buscar cargas
+        db.all(`
+          SELECT rc.*,
+            c.numeroCarga as numeroPedido,
+            c.clienteNome,
+            c.clienteEndereco,
+            c.valorTotal,
+            c.status as pedidoStatus,
+            c.numeroNota,
+            c.notaFiscalId,
+            'carga' as tipo
+          FROM romaneio_cargas rc
+          INNER JOIN cargas c ON rc.cargaId = c.id
+          WHERE rc.romaneioId = ?
+          ORDER BY rc.ordem, c.numeroCarga
+        `, [romaneioId], (err, cargas) => {
+          if (err) {
+            logger.error('Erro ao buscar cargas do romaneio:', err);
+            // Retornar apenas pedidos em caso de erro
+            return res.json({
+              success: true,
+              romaneio: {
+                ...romaneio,
+                pedidos: pedidos || []
+              }
+            });
           }
+          
+          // Combinar pedidos e cargas, ordenando por ordem
+          const todos = [
+            ...(pedidos || []).map(p => ({ ...p, tipo: 'pedido' })),
+            ...(cargas || []).map(c => ({ ...c, tipo: 'carga' }))
+          ].sort((a, b) => {
+            // Ordenar primeiro por ordem, depois por numeroPedido
+            if (a.ordem !== b.ordem) {
+              return (a.ordem || 0) - (b.ordem || 0);
+            }
+            return (a.numeroPedido || '').localeCompare(b.numeroPedido || '');
+          });
+          
+          res.json({
+            success: true,
+            romaneio: {
+              ...romaneio,
+              pedidos: todos
+            }
+          });
         });
       });
     });
@@ -650,5 +701,6 @@ router.delete('/:id', requireRole('ADMINISTRATIVO'), (req, res) => {
 });
 
 module.exports = router;
+
 
 

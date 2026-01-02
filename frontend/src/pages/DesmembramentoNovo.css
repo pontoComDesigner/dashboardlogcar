@@ -382,15 +382,6 @@
   border-radius: 6px;
 }
 
-.diferenca.ok {
-  color: #28a745;
-  font-weight: 600;
-}
-
-.diferenca.erro {
-  color: #dc3545;
-  font-weight: 600;
-}
 
 .footer-actions {
   display: flex;

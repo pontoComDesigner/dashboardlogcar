@@ -340,3 +340,4 @@ router.delete('/:id', requireRole('ADMINISTRATIVO'), (req, res) => {
 module.exports = router;
 
 
+

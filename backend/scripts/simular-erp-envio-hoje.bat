@@ -5,3 +5,4 @@ cd /d %~dp0..
 node scripts/simular-erp-envio-hoje.js %*
 
 
+

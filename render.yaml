@@ -21,3 +21,4 @@ services:
 # Nota: É recomendado configurar variáveis de ambiente diretamente no painel do Render
 # para maior segurança, especialmente JWT_SECRET e ERP_API_KEY
 
+

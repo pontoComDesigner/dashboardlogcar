@@ -9,3 +9,4 @@ call npm run simular-erp-hoje %*
 pause
 
 
+

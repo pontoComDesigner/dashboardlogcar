@@ -236,6 +236,17 @@ function createTables() {
         FOREIGN KEY (pedidoId) REFERENCES pedidos(id) ON DELETE CASCADE
       )`,
       
+      // Tabela de relação romaneio-cargas (pedidos desmembrados)
+      `CREATE TABLE IF NOT EXISTS romaneio_cargas (
+        id TEXT PRIMARY KEY,
+        romaneioId TEXT NOT NULL,
+        cargaId TEXT NOT NULL,
+        ordem INTEGER DEFAULT 0,
+        FOREIGN KEY (romaneioId) REFERENCES romaneios(id) ON DELETE CASCADE,
+        FOREIGN KEY (cargaId) REFERENCES cargas(id) ON DELETE CASCADE,
+        UNIQUE(romaneioId, cargaId)
+      )`,
+      
       // Tabela de padrões aprendidos (para IA/heurísticas)
       `CREATE TABLE IF NOT EXISTS padroes_desmembramento (
         id TEXT PRIMARY KEY,

@@ -659,10 +659,11 @@ router.post('/romaneios/:romaneioId/pedidos', apiKeyMiddleware, (req, res) => {
       let erroOcorrido = null;
       
       pedidos.forEach((numeroPedido, index) => {
-        db.get('SELECT id FROM pedidos WHERE numeroPedido = ?', [numeroPedido], (err, pedido) => {
+        // Primeiro, tentar buscar em cargas (pedidos desmembrados usam numeroCarga como numeroPedido)
+        db.get('SELECT id FROM cargas WHERE numeroCarga = ?', [numeroPedido], (err, carga) => {
           if (err) {
             erroOcorrido = err;
-            logger.error('Erro ao buscar pedido:', err);
+            logger.error('Erro ao buscar carga:', err);
             processadas++;
             if (processadas === pedidos.length) {
               return finalizarProcessamento();
@@ -670,12 +671,12 @@ router.post('/romaneios/:romaneioId/pedidos', apiKeyMiddleware, (req, res) => {
             return;
           }
           
-          if (pedido) {
-            // Verificar se já está associado
-            db.get('SELECT id FROM romaneio_pedidos WHERE romaneioId = ? AND pedidoId = ?', [romaneioId, pedido.id], (err, existing) => {
+          if (carga) {
+            // Encontrou uma carga - associar via romaneio_cargas
+            db.get('SELECT id FROM romaneio_cargas WHERE romaneioId = ? AND cargaId = ?', [romaneioId, carga.id], (err, existing) => {
               if (err) {
                 erroOcorrido = err;
-                logger.error('Erro ao verificar associação:', err);
+                logger.error('Erro ao verificar associação de carga:', err);
                 processadas++;
                 if (processadas === pedidos.length) {
                   return finalizarProcessamento();
@@ -685,23 +686,24 @@ router.post('/romaneios/:romaneioId/pedidos', apiKeyMiddleware, (req, res) => {
               
               if (existing) {
                 // Já está associado - apenas contar
-                pedidosAssociados.push({ pedidoId: pedido.id, ordem: index });
+                pedidosAssociados.push({ cargaId: carga.id, ordem: index, tipo: 'carga' });
                 processadas++;
                 if (processadas === pedidos.length) {
                   finalizarProcessamento();
                 }
               } else {
-                // Associar pedido ao romaneio
+                // Associar carga ao romaneio
                 const relacionamentoId = uuidv4();
                 db.run(`
-                  INSERT INTO romaneio_pedidos (id, romaneioId, pedidoId, ordem)
+                  INSERT INTO romaneio_cargas (id, romaneioId, cargaId, ordem)
                   VALUES (?, ?, ?, ?)
-                `, [relacionamentoId, romaneioId, pedido.id, index], (err) => {
+                `, [relacionamentoId, romaneioId, carga.id, index], (err) => {
                   if (err) {
                     erroOcorrido = err;
-                    logger.error('Erro ao associar pedido ao romaneio:', err);
+                    logger.error('Erro ao associar carga ao romaneio:', err);
                   } else {
-                    pedidosAssociados.push({ pedidoId: pedido.id, ordem: index });
+                    pedidosAssociados.push({ cargaId: carga.id, ordem: index, tipo: 'carga' });
+                    logger.info(`✅ Carga ${numeroPedido} associada ao romaneio ${romaneio.numeroRomaneio}`);
                   }
                   
                   processadas++;
@@ -712,11 +714,68 @@ router.post('/romaneios/:romaneioId/pedidos', apiKeyMiddleware, (req, res) => {
               }
             });
           } else {
-            logger.warn(`Pedido ${numeroPedido} não encontrado no sistema`);
-            processadas++;
-            if (processadas === pedidos.length) {
-              finalizarProcessamento();
-            }
+            // Não encontrou em cargas, tentar em pedidos
+            db.get('SELECT id FROM pedidos WHERE numeroPedido = ?', [numeroPedido], (err, pedido) => {
+              if (err) {
+                erroOcorrido = err;
+                logger.error('Erro ao buscar pedido:', err);
+                processadas++;
+                if (processadas === pedidos.length) {
+                  return finalizarProcessamento();
+                }
+                return;
+              }
+              
+              if (pedido) {
+                // Verificar se já está associado
+                db.get('SELECT id FROM romaneio_pedidos WHERE romaneioId = ? AND pedidoId = ?', [romaneioId, pedido.id], (err, existing) => {
+                  if (err) {
+                    erroOcorrido = err;
+                    logger.error('Erro ao verificar associação de pedido:', err);
+                    processadas++;
+                    if (processadas === pedidos.length) {
+                      return finalizarProcessamento();
+                    }
+                    return;
+                  }
+                  
+                  if (existing) {
+                    // Já está associado - apenas contar
+                    pedidosAssociados.push({ pedidoId: pedido.id, ordem: index, tipo: 'pedido' });
+                    processadas++;
+                    if (processadas === pedidos.length) {
+                      finalizarProcessamento();
+                    }
+                  } else {
+                    // Associar pedido ao romaneio
+                    const relacionamentoId = uuidv4();
+                    db.run(`
+                      INSERT INTO romaneio_pedidos (id, romaneioId, pedidoId, ordem)
+                      VALUES (?, ?, ?, ?)
+                    `, [relacionamentoId, romaneioId, pedido.id, index], (err) => {
+                      if (err) {
+                        erroOcorrido = err;
+                        logger.error('Erro ao associar pedido ao romaneio:', err);
+                      } else {
+                        pedidosAssociados.push({ pedidoId: pedido.id, ordem: index, tipo: 'pedido' });
+                        logger.info(`✅ Pedido ${numeroPedido} associado ao romaneio ${romaneio.numeroRomaneio}`);
+                      }
+                      
+                      processadas++;
+                      if (processadas === pedidos.length) {
+                        finalizarProcessamento();
+                      }
+                    });
+                  }
+                });
+              } else {
+                logger.warn(`Pedido/Carga ${numeroPedido} não encontrado no sistema`);
+                processadas++;
+                if (processadas === pedidos.length) {
+                  finalizarProcessamento();
+                }
+              }
+            });
           }
         });
       });

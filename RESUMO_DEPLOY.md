@@ -61,18 +61,29 @@ openssl rand -hex 32
 openssl rand -base64 32
 ```
 
-## 🔗 URLs e Comunicação
+## ✅ Deploy Concluído!
 
-Após deploy, você terá:
+Seu serviço está rodando em:
 - **URL**: `https://dashboardlogcar.onrender.com`
 - **API**: `https://dashboardlogcar.onrender.com/api`
+- **Health Check**: `https://dashboardlogcar.onrender.com/health`
+
+## 🔗 URLs e Comunicação
 
 ### Para o LogCar App:
-Configure `DASHBOARDLOGCAR_URL=https://dashboardlogcar.onrender.com`
+Configure no LogCar App (painel Render):
+```env
+DASHBOARDLOGCAR_URL=https://dashboardlogcar.onrender.com
+```
 
 ### Para o ERP:
-- Base URL: `https://dashboardlogcar.onrender.com/api/erp`
-- Header: `X-API-Key: <sua-ERP_API_KEY>`
+- **Base URL**: `https://dashboardlogcar.onrender.com/api/erp`
+- **Header**: `X-API-Key: <sua-ERP_API_KEY>`
+
+**Endpoints:**
+- `POST /api/erp/notas-fiscais` - Enviar nota fiscal
+- `GET /api/erp/pedidos/:notaFiscalId` - Consultar pedidos desmembrados
+- `POST /api/erp/romaneios` - Enviar romaneio para visualização
 
 ## ⚠️ Importante
 

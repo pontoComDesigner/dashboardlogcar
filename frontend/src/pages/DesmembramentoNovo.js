@@ -847,12 +847,6 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
                   maximumFractionDigits: 2
                 })}
               </div>
-              <div className={`diferenca ${Math.abs(totalValor - notaFiscal.valorTotal) < 0.01 ? 'ok' : 'erro'}`}>
-                <strong>Diferença:</strong> R$ {Number(Math.abs(totalValor - notaFiscal.valorTotal)).toLocaleString('pt-BR', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                })}
-              </div>
             </div>
 
             <div className="footer-actions">
