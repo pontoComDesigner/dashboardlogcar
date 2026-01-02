@@ -172,6 +172,120 @@ router.post('/notas-fiscais', apiKeyMiddleware, (req, res) => {
 });
 
 /**
+ * GET /api/erp/carga/:numeroCarga
+ * 
+ * Busca informações completas de uma carga específica pelo número da carga
+ * Útil para obter dados completos antes de enviar ao LogCar App
+ */
+router.get('/carga/:numeroCarga', apiKeyMiddleware, (req, res) => {
+  try {
+    const { numeroCarga } = req.params;
+    const db = getDatabase();
+    
+    // Buscar carga pelo número
+    db.get(
+      `SELECT * FROM cargas WHERE numeroCarga = ?`,
+      [numeroCarga],
+      (err, carga) => {
+        if (err) {
+          logger.error('Erro ao buscar carga:', err);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar carga'
+          });
+        }
+        
+        if (!carga) {
+          return res.status(404).json({
+            success: false,
+            message: 'Carga não encontrada'
+          });
+        }
+        
+        // Buscar itens da carga
+        db.all(
+          `SELECT ci.*, nfi.descricao, nfi.unidade, nfi.valorUnitario, nfi.peso, nfi.volume, 
+                  nfi.codigoInterno, nfi.codigoBarrasEan, nfi.ncm, nfi.cfop, nfi.codigoProduto
+           FROM carga_itens ci
+           INNER JOIN nota_fiscal_itens nfi ON ci.notaFiscalItemId = nfi.id
+           WHERE ci.cargaId = ?
+           ORDER BY ci.ordem`,
+          [carga.id],
+          (err, itens) => {
+            if (err) {
+              logger.error('Erro ao buscar itens da carga:', err);
+            }
+            
+            // Buscar dados da nota fiscal para incluir informações do cliente
+            db.get(
+              `SELECT * FROM notas_fiscais WHERE id = ?`,
+              [carga.notaFiscalId],
+              (err, notaFiscal) => {
+                if (err) {
+                  logger.error('Erro ao buscar nota fiscal:', err);
+                }
+                
+                const cargaFormatada = {
+                  numeroCarga: carga.numeroCarga,
+                  numeroNota: carga.numeroNota,
+                  numeroPedido: carga.numeroPedido || notaFiscal?.numeroPedido || null,
+                  notaFiscalId: carga.notaFiscalId,
+                  cliente: {
+                    nome: carga.clienteNome || notaFiscal?.clienteNome || null,
+                    cnpjCpf: carga.clienteCnpjCpf || notaFiscal?.clienteCnpjCpf || null,
+                    endereco: carga.clienteEndereco || notaFiscal?.clienteEndereco || null,
+                    cidade: carga.clienteCidade || notaFiscal?.clienteCidade || null,
+                    estado: carga.clienteEstado || notaFiscal?.clienteEstado || null,
+                    cep: carga.clienteCep || notaFiscal?.clienteCep || null
+                  },
+                  clienteNome: carga.clienteNome || notaFiscal?.clienteNome || null,
+                  clienteCnpjCpf: carga.clienteCnpjCpf || notaFiscal?.clienteCnpjCpf || null,
+                  clienteEndereco: carga.clienteEndereco || notaFiscal?.clienteEndereco || null,
+                  clienteCidade: carga.clienteCidade || notaFiscal?.clienteCidade || null,
+                  clienteEstado: carga.clienteEstado || notaFiscal?.clienteEstado || null,
+                  clienteCep: carga.clienteCep || notaFiscal?.clienteCep || null,
+                  dataVencimento: carga.dataVencimento || notaFiscal?.dataVencimento || null,
+                  observacoesNF: carga.observacoesNF || notaFiscal?.observacoes || null,
+                  pesoTotal: carga.pesoTotal,
+                  volumeTotal: carga.volumeTotal,
+                  valorTotal: carga.valorTotal,
+                  status: carga.status === 'PENDENTE_DESMEMBRAMENTO' ? 'PENDENTE DE DESMEMBRAMENTO' : carga.status,
+                  itens: (itens || []).map(item => ({
+                    descricao: item.descricao,
+                    codigoProduto: item.codigoProduto,
+                    codigoInterno: item.codigoInterno,
+                    codigoBarrasEan: item.codigoBarrasEan,
+                    quantidade: item.quantidade,
+                    unidade: item.unidade,
+                    valorUnitario: item.valorUnitario,
+                    valorTotal: item.valorTotal,
+                    peso: item.peso,
+                    volume: item.volume,
+                    ncm: item.ncm,
+                    cfop: item.cfop
+                  }))
+                };
+                
+                res.json({
+                  success: true,
+                  carga: cargaFormatada
+                });
+              }
+            );
+          }
+        );
+      }
+    );
+  } catch (error) {
+    logger.error('Erro ao buscar carga:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
+/**
  * GET /api/erp/cargas/:notaFiscalId
  * 
  * Retorna cargas desmembradas de uma nota fiscal (formato SPOOL - legado)
@@ -445,6 +559,58 @@ router.get('/pedidos/:notaFiscalId', apiKeyMiddleware, (req, res) => {
     );
   } catch (error) {
     logger.error('Erro ao buscar pedidos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
+/**
+ * GET /api/erp/romaneios
+ * 
+ * Lista todos os romaneios (para ERP consultar)
+ */
+router.get('/romaneios', apiKeyMiddleware, (req, res) => {
+  try {
+    const db = getDatabase();
+    const { status } = req.query;
+    
+    let query = `
+      SELECT r.*, 
+        COALESCE(
+          (SELECT COUNT(*) FROM romaneio_pedidos WHERE romaneioId = r.id) +
+          (SELECT COUNT(*) FROM romaneio_cargas WHERE romaneioId = r.id),
+          0
+        ) as totalPedidos
+      FROM romaneios r
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (status) {
+      query += ' AND r.status = ?';
+      params.push(status);
+    }
+    
+    query += ' ORDER BY r.createdAt DESC LIMIT 50';
+    
+    db.all(query, params, (err, romaneios) => {
+      if (err) {
+        logger.error('Erro ao buscar romaneios:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar romaneios'
+        });
+      }
+      
+      res.json({
+        success: true,
+        romaneios: romaneios || []
+      });
+    });
+  } catch (error) {
+    logger.error('Erro ao listar romaneios:', error);
     res.status(500).json({
       success: false,
       message: 'Erro ao processar requisição'

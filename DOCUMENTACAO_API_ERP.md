@@ -210,6 +210,77 @@ Este endpoint retorna todas as cargas desmembradas de uma nota fiscal. Mantido p
 
 ---
 
+## 📤 Consulta de Carga Específica (GET)
+
+### Endpoint
+
+```
+GET /api/erp/carga/:numeroCarga
+```
+
+### Descrição
+
+Busca informações completas de uma carga específica pelo número da carga. Útil para obter dados completos antes de enviar ao LogCar App.
+
+### Headers
+
+```
+X-API-Key: <sua-api-key>
+```
+
+### Parâmetros
+
+- `numeroCarga` (path): Número da carga (ex: `NF-1767317825488-C03`)
+
+### Resposta de Sucesso
+
+**Status Code:** `200 OK`
+
+```json
+{
+  "success": true,
+  "carga": {
+    "numeroCarga": "NF-1767317825488-C03",
+    "numeroNota": "1767317825488",
+    "numeroPedido": "PED-000123",
+    "notaFiscalId": "uuid-da-nota-fiscal",
+    "cliente": {
+      "nome": "Construtora ABC Ltda",
+      "cnpjCpf": "12.345.678/0001-90",
+      "endereco": "Rua das Obras, 123, Centro",
+      "cidade": "São Paulo",
+      "estado": "SP",
+      "cep": "01234-567"
+    },
+    "clienteNome": "Construtora ABC Ltda",
+    "clienteEndereco": "Rua das Obras, 123, Centro",
+    "clienteCidade": "São Paulo",
+    "clienteEstado": "SP",
+    "clienteCep": "01234-567",
+    "dataVencimento": "2026-01-31",
+    "observacoesNF": "Entrega urgente",
+    "pesoTotal": 2500.50,
+    "volumeTotal": 15.750,
+    "valorTotal": 50000.00,
+    "status": "CRIADA",
+    "itens": [...]
+  }
+}
+```
+
+### Respostas de Erro
+
+#### 404 Not Found - Carga não encontrada
+
+```json
+{
+  "success": false,
+  "message": "Carga não encontrada"
+}
+```
+
+---
+
 ## 📤 Retorno de Pedidos Desmembrados (GET)
 
 ### Endpoint
