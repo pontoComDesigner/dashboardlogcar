@@ -76,8 +76,8 @@ router.post('/notas-fiscais', apiKeyMiddleware, (req, res) => {
         // Inserir nota fiscal
         db.run(
           `INSERT INTO notas_fiscais 
-           (id, erpId, numeroNota, serie, numeroPedido, clienteNome, clienteCnpjCpf, clienteEndereco, clienteCidade, clienteEstado, clienteCep, dataEmissao, dataVencimento, valorTotal, pesoTotal, volumeTotal, chaveAcesso, observacoes, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE_DESMEMBRAMENTO')`,
+           (id, erpId, numeroNota, serie, numeroPedido, clienteNome, clienteCnpjCpf, clienteEndereco, clienteCidade, clienteEstado, clienteCep, dataEmissao, dataVencimento, valorTotal, pesoTotal, volumeTotal, chaveAcesso, observacoes, vendedorId, vendedorNome, clienteTelefone1, clienteTelefone2, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE_DESMEMBRAMENTO')`,
           [
             notaId,
             dadosNF.erpId || null,
@@ -96,7 +96,11 @@ router.post('/notas-fiscais', apiKeyMiddleware, (req, res) => {
             pesoTotal,
             volumeTotal,
             dadosNF.chaveAcesso || null,
-            dadosNF.observacoes || null
+            dadosNF.observacoes || null,
+            dadosNF.vendedorId || null,
+            dadosNF.vendedorNome || null,
+            dadosNF.clienteTelefone1 || null,
+            dadosNF.clienteTelefone2 || null
           ],
           function(err) {
             if (err) {
@@ -236,7 +240,9 @@ router.get('/carga/:numeroCarga', apiKeyMiddleware, (req, res) => {
                     endereco: carga.clienteEndereco || notaFiscal?.clienteEndereco || null,
                     cidade: carga.clienteCidade || notaFiscal?.clienteCidade || null,
                     estado: carga.clienteEstado || notaFiscal?.clienteEstado || null,
-                    cep: carga.clienteCep || notaFiscal?.clienteCep || null
+                    cep: carga.clienteCep || notaFiscal?.clienteCep || null,
+                    telefone1: notaFiscal?.clienteTelefone1 || null,
+                    telefone2: notaFiscal?.clienteTelefone2 || null
                   },
                   clienteNome: carga.clienteNome || notaFiscal?.clienteNome || null,
                   clienteCnpjCpf: carga.clienteCnpjCpf || notaFiscal?.clienteCnpjCpf || null,
@@ -244,6 +250,25 @@ router.get('/carga/:numeroCarga', apiKeyMiddleware, (req, res) => {
                   clienteCidade: carga.clienteCidade || notaFiscal?.clienteCidade || null,
                   clienteEstado: carga.clienteEstado || notaFiscal?.clienteEstado || null,
                   clienteCep: carga.clienteCep || notaFiscal?.clienteCep || null,
+                  clienteTelefone1: notaFiscal?.clienteTelefone1 || null,
+                  clienteTelefone2: notaFiscal?.clienteTelefone2 || null,
+                  // Vendedor (da NF original)
+                  vendedor: {
+                    id: notaFiscal?.vendedorId || null,
+                    nome: notaFiscal?.vendedorNome || null
+                  },
+                  vendedorId: notaFiscal?.vendedorId || null,
+                  vendedorNome: notaFiscal?.vendedorNome || null,
+                  // Data de Faturamento (data de emissão da NF)
+                  dataEmissao: notaFiscal?.dataEmissao || null,
+                  dataFaturamento: notaFiscal?.dataEmissao || null, // Mesmo que dataEmissao
+                  // Nota Fiscal Original (objeto completo para referência)
+                  notaFiscal: notaFiscal ? {
+                    numeroNota: notaFiscal.numeroNota,
+                    dataEmissao: notaFiscal.dataEmissao,
+                    vendedorId: notaFiscal.vendedorId,
+                    vendedorNome: notaFiscal.vendedorNome
+                  } : null,
                   dataVencimento: carga.dataVencimento || notaFiscal?.dataVencimento || null,
                   observacoesNF: carga.observacoesNF || notaFiscal?.observacoes || null,
                   pesoTotal: carga.pesoTotal,

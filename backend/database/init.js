@@ -122,6 +122,10 @@ function createTables() {
         recebidoDoErp INTEGER DEFAULT 0,
         pesoTotal REAL,
         volumeTotal REAL,
+        vendedorId TEXT,
+        vendedorNome TEXT,
+        clienteTelefone1 TEXT,
+        clienteTelefone2 TEXT,
         createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
         updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (pedidoId) REFERENCES pedidos(id)

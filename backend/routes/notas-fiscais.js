@@ -165,11 +165,12 @@ router.post('/', requireRole('LOGISTICA', 'ADMINISTRATIVO'), (req, res) => {
       }
       
       // Inserir nota fiscal
+      const { vendedorId, vendedorNome, clienteTelefone1, clienteTelefone2 } = req.body;
       db.run(
         `INSERT INTO notas_fiscais 
-         (id, numeroNota, serie, pedidoId, clienteNome, clienteCnpjCpf, clienteEndereco, dataEmissao, dataVencimento, valorTotal, chaveAcesso, observacoes, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
-        [notaId, numeroNota, serie || '1', pedidoId || null, clienteNome, clienteCnpjCpf, clienteEndereco || null, dataEmissao, dataVencimento || null, valorTotalFinal, chaveAcesso || null, observacoes || null],
+         (id, numeroNota, serie, pedidoId, clienteNome, clienteCnpjCpf, clienteEndereco, dataEmissao, dataVencimento, valorTotal, chaveAcesso, observacoes, vendedorId, vendedorNome, clienteTelefone1, clienteTelefone2, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE')`,
+        [notaId, numeroNota, serie || '1', pedidoId || null, clienteNome, clienteCnpjCpf, clienteEndereco || null, dataEmissao, dataVencimento || null, valorTotalFinal, chaveAcesso || null, observacoes || null, vendedorId || null, vendedorNome || null, clienteTelefone1 || null, clienteTelefone2 || null],
         function(err) {
           if (err) {
             logger.error('Erro ao inserir nota fiscal:', err);
@@ -420,6 +421,7 @@ router.delete('/:id', requireRole('ADMINISTRATIVO'), (req, res) => {
 });
 
 module.exports = router;
+
 
 
 

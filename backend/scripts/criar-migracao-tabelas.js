@@ -31,6 +31,10 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     { sql: `ALTER TABLE notas_fiscais ADD COLUMN recebidoDoErp INTEGER DEFAULT 0`, name: 'notas_fiscais.recebidoDoErp' },
     { sql: `ALTER TABLE notas_fiscais ADD COLUMN pesoTotal REAL`, name: 'notas_fiscais.pesoTotal' },
     { sql: `ALTER TABLE notas_fiscais ADD COLUMN volumeTotal REAL`, name: 'notas_fiscais.volumeTotal' },
+    { sql: `ALTER TABLE notas_fiscais ADD COLUMN vendedorId TEXT`, name: 'notas_fiscais.vendedorId' },
+    { sql: `ALTER TABLE notas_fiscais ADD COLUMN vendedorNome TEXT`, name: 'notas_fiscais.vendedorNome' },
+    { sql: `ALTER TABLE notas_fiscais ADD COLUMN clienteTelefone1 TEXT`, name: 'notas_fiscais.clienteTelefone1' },
+    { sql: `ALTER TABLE notas_fiscais ADD COLUMN clienteTelefone2 TEXT`, name: 'notas_fiscais.clienteTelefone2' },
     
     // Tabela nota_fiscal_itens
     { sql: `ALTER TABLE nota_fiscal_itens ADD COLUMN quantidadeDesmembrada REAL DEFAULT 0`, name: 'nota_fiscal_itens.quantidadeDesmembrada' },
