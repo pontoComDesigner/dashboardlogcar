@@ -68,37 +68,32 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
     setTimeout(() => setAlert(null), 5000);
   };
 
-  const gerarPreviewAutomatico = () => {
+  const gerarPreviewAutomatico = async () => {
     if (!notaFiscal || !notaFiscal.itens) return;
 
-    // Distribuir itens entre cargas (algoritmo simplificado)
-    const itens = [...notaFiscal.itens];
-    const numeroCargasFinal = parseInt(numeroCargas) || 1;
-    const cargasPreview = Array.from({ length: numeroCargasFinal }, (_, i) => ({
-      id: `preview-${i}`,
-      numeroCarga: `${notaFiscal.numeroNota}-C${String(i + 1).padStart(2, '0')}`,
-      itens: [],
-      pesoTotal: 0,
-      volumeTotal: 0,
-      valorTotal: 0
-    }));
-
-    // Distribuir itens
-    itens.forEach((item, index) => {
-      const cargaIndex = index % numeroCargasFinal;
-      const itemClone = { 
-        ...item, 
-        idItem: item.id,
-        itemUniqueId: `${item.id}-${cargaIndex}-${index}` // ID único para renderização
-      };
-      cargasPreview[cargaIndex].itens.push(itemClone);
-      cargasPreview[cargaIndex].pesoTotal += item.peso || 0;
-      cargasPreview[cargaIndex].volumeTotal += item.volume || 0;
-      cargasPreview[cargaIndex].valorTotal += item.valorTotal || 0;
-    });
-
-    setCargas(cargasPreview);
-    setModo('auto');
+    try {
+      setLoading(true);
+      
+      // Chamar endpoint do backend para gerar preview usando lógica correta
+      const response = await api.post('/desmembramento/preview-automatico', {
+        notaFiscalId: notaFiscal.id,
+        numeroCargas: numeroCargas || null // null para calcular automaticamente
+      });
+      
+      if (response.data.success) {
+        setCargas(response.data.cargas);
+        setNumeroCargas(response.data.numeroCargas);
+        setModo('auto');
+        showAlert('Preview gerado com sucesso!', 'success');
+      } else {
+        showAlert('Erro ao gerar preview', 'error');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar preview:', error);
+      showAlert(error.response?.data?.message || 'Erro ao gerar preview automático', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const iniciarModoManual = () => {
@@ -667,9 +662,14 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
             <span className="modo-badge">
               {modo === 'auto' ? '📊 Modo Automático' : '✋ Modo Manual'}
             </span>
-            {modo === 'manual' && (
+            {(modo === 'manual' || modo === 'auto') && (
               <button className="btn btn-secondary btn-sm" onClick={adicionarCarga}>
                 + Adicionar Carga
+              </button>
+            )}
+            {modo === 'auto' && (
+              <button className="btn btn-primary btn-sm" onClick={gerarPreviewAutomatico} disabled={loading}>
+                🔄 Desmembrar Automaticamente
               </button>
             )}
             {(modo === 'auto' || modo === 'manual') && (

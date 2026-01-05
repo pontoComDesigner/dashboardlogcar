@@ -9,6 +9,7 @@ import NotasFiscais from './pages/NotasFiscais';
 import Romaneios from './pages/Romaneios';
 import Desmembramento from './pages/Desmembramento';
 import Usuarios from './pages/Usuarios';
+import Configuracoes from './pages/Configuracoes';
 import Layout from './components/Layout';
 import './App.css';
 
@@ -36,6 +37,14 @@ function App() {
               element={
                 <PrivateRoute requiredRole="ADMINISTRATIVO">
                   <Usuarios />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="configuracoes"
+              element={
+                <PrivateRoute requiredRole="ADMINISTRATIVO">
+                  <Configuracoes />
                 </PrivateRoute>
               }
             />

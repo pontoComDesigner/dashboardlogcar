@@ -58,10 +58,16 @@ const Layout = () => {
               {sidebarOpen && <span>Desmembramento</span>}
             </Link>
             {user?.role === 'ADMINISTRATIVO' && (
-              <Link to="/usuarios" className="sidebar-link">
-                <span>👥</span>
-                {sidebarOpen && <span>Usuários</span>}
-              </Link>
+              <>
+                <Link to="/usuarios" className="sidebar-link">
+                  <span>👥</span>
+                  {sidebarOpen && <span>Usuários</span>}
+                </Link>
+                <Link to="/configuracoes" className="sidebar-link">
+                  <span>⚙️</span>
+                  {sidebarOpen && <span>Configurações</span>}
+                </Link>
+              </>
             )}
           </nav>
         </aside>
