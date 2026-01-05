@@ -22,6 +22,7 @@ const romaneioRoutes = require('./routes/romaneios');
 const relatorioRoutes = require('./routes/relatorios');
 const erpRoutes = require('./routes/erp');
 const desmembramentoRoutes = require('./routes/desmembramento');
+const configuracoesRoutes = require('./routes/configuracoes');
 
 // Importar middleware
 const { errorHandler } = require('./middleware/errorHandler');
@@ -75,6 +76,7 @@ app.use('/api/romaneios', romaneioRoutes);
 app.use('/api/relatorios', relatorioRoutes);
 app.use('/api/erp', erpRoutes);
 app.use('/api/desmembramento', desmembramentoRoutes);
+app.use('/api/configuracoes', configuracoesRoutes);
 
 // Servir arquivos estáticos do frontend em produção
 const frontendBuildPath = path.join(__dirname, '../frontend/build');
