@@ -267,6 +267,32 @@ function createTables() {
         updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
       )`,
       
+      // Tabela de regras de produtos especiais (códigos que só podem ter 1 unidade por carga)
+      `CREATE TABLE IF NOT EXISTS regras_produtos_especiais (
+        id TEXT PRIMARY KEY,
+        codigoProduto TEXT NOT NULL UNIQUE,
+        descricaoProduto TEXT,
+        quantidadeMaximaPorCarga INTEGER DEFAULT 1,
+        observacoes TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Tabela de histórico de desmembramentos reais (importados do PDF)
+      `CREATE TABLE IF NOT EXISTS historico_desmembramentos_reais (
+        id TEXT PRIMARY KEY,
+        numeroNotaFiscal TEXT NOT NULL,
+        codigoProduto TEXT NOT NULL,
+        descricaoProduto TEXT,
+        unidade TEXT,
+        quantidadeTotal INTEGER,
+        quantidadePorCarga INTEGER,
+        numeroCarga INTEGER,
+        numeroSequencia INTEGER,
+        observacoes TEXT,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
       // Tabela de auditoria (log de todas as ações)
       `CREATE TABLE IF NOT EXISTS auditoria (
         id TEXT PRIMARY KEY,
@@ -300,7 +326,10 @@ function createTables() {
       `CREATE INDEX IF NOT EXISTS idx_romaneio_pedidos_romaneio ON romaneio_pedidos(romaneioId)`,
       `CREATE INDEX IF NOT EXISTS idx_romaneio_pedidos_pedido ON romaneio_pedidos(pedidoId)`,
       `CREATE INDEX IF NOT EXISTS idx_auditoria_entidade ON auditoria(entidade, entidadeId)`,
-      `CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria(usuarioId)`
+      `CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria(usuarioId)`,
+      `CREATE INDEX IF NOT EXISTS idx_regras_produtos_codigo ON regras_produtos_especiais(codigoProduto)`,
+      `CREATE INDEX IF NOT EXISTS idx_historico_nf ON historico_desmembramentos_reais(numeroNotaFiscal)`,
+      `CREATE INDEX IF NOT EXISTS idx_historico_codigo ON historico_desmembramentos_reais(codigoProduto)`
     ];
     
     // Criar tabelas sequencialmente

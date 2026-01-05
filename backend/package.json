@@ -9,7 +9,8 @@
     "init-db": "node scripts/init-database.js",
     "simular-erp": "node scripts/simular-erp-envio.js",
     "simular-erp-hoje": "node scripts/simular-erp-envio-hoje.js",
-    "migrar": "node scripts/criar-migracao-tabelas.js"
+    "migrar": "node scripts/criar-migracao-tabelas.js",
+    "importar-historico": "node scripts/importarHistoricoFaturamentos.js"
   },
   "keywords": [
     "logistics",

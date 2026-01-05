@@ -374,5 +374,273 @@ router.get('/cargas/:notaId', (req, res) => {
   }
 });
 
+/**
+ * GET /api/desmembramento/regras-produtos-especiais
+ * 
+ * Lista todas as regras de produtos especiais
+ */
+router.get('/regras-produtos-especiais', requireRole('LOGISTICA', 'ADMINISTRATIVO'), (req, res) => {
+  try {
+    const db = getDatabase();
+    
+    db.all('SELECT * FROM regras_produtos_especiais ORDER BY codigoProduto', [], (err, regras) => {
+      if (err) {
+        logger.error('Erro ao buscar regras:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar regras de produtos especiais'
+        });
+      }
+      
+      res.json({
+        success: true,
+        regras: regras || []
+      });
+    });
+  } catch (error) {
+    logger.error('Erro ao buscar regras:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
+/**
+ * POST /api/desmembramento/regras-produtos-especiais
+ * 
+ * Cria ou atualiza uma regra de produto especial
+ */
+router.post('/regras-produtos-especiais', requireRole('LOGISTICA', 'ADMINISTRATIVO'), (req, res) => {
+  try {
+    const { codigoProduto, descricaoProduto, quantidadeMaximaPorCarga, observacoes } = req.body;
+    
+    if (!codigoProduto || !quantidadeMaximaPorCarga) {
+      return res.status(400).json({
+        success: false,
+        message: 'codigoProduto e quantidadeMaximaPorCarga são obrigatórios'
+      });
+    }
+    
+    const db = getDatabase();
+    const { v4: uuidv4 } = require('uuid');
+    
+    // Verificar se já existe
+    db.get(
+      'SELECT id FROM regras_produtos_especiais WHERE codigoProduto = ?',
+      [codigoProduto],
+      (err, row) => {
+        if (err) {
+          logger.error('Erro ao verificar regra:', err);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao verificar regra existente'
+          });
+        }
+        
+        if (row) {
+          // Atualizar
+          db.run(
+            'UPDATE regras_produtos_especiais SET descricaoProduto = ?, quantidadeMaximaPorCarga = ?, observacoes = ?, updatedAt = CURRENT_TIMESTAMP WHERE codigoProduto = ?',
+            [descricaoProduto || null, quantidadeMaximaPorCarga, observacoes || null, codigoProduto],
+            function(err) {
+              if (err) {
+                logger.error('Erro ao atualizar regra:', err);
+                return res.status(500).json({
+                  success: false,
+                  message: 'Erro ao atualizar regra'
+                });
+              }
+              
+              registrarAcao(
+                req.user,
+                'REGRA_PRODUTO_ESPECIAL_ATUALIZADA',
+                'regras_produtos_especiais',
+                row.id,
+                null,
+                { codigoProduto, quantidadeMaximaPorCarga },
+                req
+              );
+              
+              res.json({
+                success: true,
+                message: 'Regra atualizada com sucesso',
+                regra: {
+                  id: row.id,
+                  codigoProduto,
+                  descricaoProduto,
+                  quantidadeMaximaPorCarga,
+                  observacoes
+                }
+              });
+            }
+          );
+        } else {
+          // Criar nova
+          const id = uuidv4();
+          db.run(
+            'INSERT INTO regras_produtos_especiais (id, codigoProduto, descricaoProduto, quantidadeMaximaPorCarga, observacoes) VALUES (?, ?, ?, ?, ?)',
+            [id, codigoProduto, descricaoProduto || null, quantidadeMaximaPorCarga, observacoes || null],
+            function(err) {
+              if (err) {
+                logger.error('Erro ao criar regra:', err);
+                return res.status(500).json({
+                  success: false,
+                  message: 'Erro ao criar regra'
+                });
+              }
+              
+              registrarAcao(
+                req.user,
+                'REGRA_PRODUTO_ESPECIAL_CRIADA',
+                'regras_produtos_especiais',
+                id,
+                null,
+                { codigoProduto, quantidadeMaximaPorCarga },
+                req
+              );
+              
+              res.status(201).json({
+                success: true,
+                message: 'Regra criada com sucesso',
+                regra: {
+                  id,
+                  codigoProduto,
+                  descricaoProduto,
+                  quantidadeMaximaPorCarga,
+                  observacoes
+                }
+              });
+            }
+          );
+        }
+      }
+    );
+  } catch (error) {
+    logger.error('Erro ao processar regra:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
+/**
+ * DELETE /api/desmembramento/regras-produtos-especiais/:codigoProduto
+ * 
+ * Remove uma regra de produto especial
+ */
+router.delete('/regras-produtos-especiais/:codigoProduto', requireRole('LOGISTICA', 'ADMINISTRATIVO'), (req, res) => {
+  try {
+    const { codigoProduto } = req.params;
+    const db = getDatabase();
+    
+    db.get(
+      'SELECT id FROM regras_produtos_especiais WHERE codigoProduto = ?',
+      [codigoProduto],
+      (err, row) => {
+        if (err) {
+          logger.error('Erro ao buscar regra:', err);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar regra'
+          });
+        }
+        
+        if (!row) {
+          return res.status(404).json({
+            success: false,
+            message: 'Regra não encontrada'
+          });
+        }
+        
+        db.run(
+          'DELETE FROM regras_produtos_especiais WHERE codigoProduto = ?',
+          [codigoProduto],
+          (err) => {
+            if (err) {
+              logger.error('Erro ao deletar regra:', err);
+              return res.status(500).json({
+                success: false,
+                message: 'Erro ao deletar regra'
+              });
+            }
+            
+            registrarAcao(
+              req.user,
+              'REGRA_PRODUTO_ESPECIAL_REMOVIDA',
+              'regras_produtos_especiais',
+              row.id,
+              { codigoProduto },
+              null,
+              req
+            );
+            
+            res.json({
+              success: true,
+              message: 'Regra removida com sucesso'
+            });
+          }
+        );
+      }
+    );
+  } catch (error) {
+    logger.error('Erro ao remover regra:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
+/**
+ * GET /api/desmembramento/historico-reais
+ * 
+ * Lista histórico de desmembramentos reais importados
+ */
+router.get('/historico-reais', requireRole('LOGISTICA', 'ADMINISTRATIVO'), (req, res) => {
+  try {
+    const { numeroNotaFiscal, codigoProduto, limit = 100, offset = 0 } = req.query;
+    const db = getDatabase();
+    
+    let query = 'SELECT * FROM historico_desmembramentos_reais WHERE 1=1';
+    const params = [];
+    
+    if (numeroNotaFiscal) {
+      query += ' AND numeroNotaFiscal = ?';
+      params.push(numeroNotaFiscal);
+    }
+    
+    if (codigoProduto) {
+      query += ' AND codigoProduto = ?';
+      params.push(codigoProduto);
+    }
+    
+    query += ' ORDER BY createdAt DESC, numeroNotaFiscal, numeroCarga, numeroSequencia LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), parseInt(offset));
+    
+    db.all(query, params, (err, historico) => {
+      if (err) {
+        logger.error('Erro ao buscar histórico:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar histórico'
+        });
+      }
+      
+      res.json({
+        success: true,
+        historico: historico || []
+      });
+    });
+  } catch (error) {
+    logger.error('Erro ao buscar histórico:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
 module.exports = router;
 

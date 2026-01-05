@@ -72,42 +72,350 @@ function calcularNumeroCargasHeuristico(notaFiscal) {
 }
 
 /**
- * Distribui itens entre cargas de forma equilibrada
+ * Busca regras de produtos especiais
  */
-function distribuirItensEntreCargas(itens, numeroCargas) {
-  // Ordenar itens por peso (maior primeiro) para melhor distribuição
+async function buscarRegrasProdutosEspeciais(codigosProdutos) {
+  const db = getDatabase();
+  
+  return new Promise((resolve, reject) => {
+    if (!codigosProdutos || codigosProdutos.length === 0) {
+      return resolve({});
+    }
+    
+    const placeholders = codigosProdutos.map(() => '?').join(',');
+    const query = `
+      SELECT codigoProduto, quantidadeMaximaPorCarga 
+      FROM regras_produtos_especiais 
+      WHERE codigoProduto IN (${placeholders})
+    `;
+    
+    db.all(query, codigosProdutos, (err, rows) => {
+      if (err) {
+        logger.error('Erro ao buscar regras de produtos especiais:', err);
+        return resolve({});
+      }
+      
+      const regras = {};
+      rows.forEach(row => {
+        regras[row.codigoProduto] = row.quantidadeMaximaPorCarga || 1;
+      });
+      
+      resolve(regras);
+    });
+  });
+}
+
+/**
+ * Busca padrão de desmembramento no histórico para um produto normal
+ */
+async function buscarPadraoHistoricoProdutoNormal(codigoProduto, quantidade) {
+  const db = getDatabase();
+  
+  return new Promise((resolve) => {
+    if (!codigoProduto || !quantidade || quantidade <= 0) {
+      return resolve(null);
+    }
+    
+    // Buscar no histórico como esse produto foi desmembrado anteriormente
+    // Procurar por padrões similares (mesma quantidade ou quantidade próxima)
+    const query = `
+      SELECT 
+        numeroNotaFiscal,
+        quantidadeTotal,
+        quantidadePorCarga,
+        numeroCarga,
+        COUNT(*) as frequencia
+      FROM historico_desmembramentos_reais
+      WHERE codigoProduto = ?
+        AND quantidadeTotal >= ? * 0.5
+        AND quantidadeTotal <= ? * 2
+      GROUP BY quantidadeTotal, quantidadePorCarga
+      ORDER BY ABS(quantidadeTotal - ?) ASC, frequencia DESC
+      LIMIT 1
+    `;
+    
+    db.get(query, [codigoProduto, quantidade, quantidade, quantidade], (err, row) => {
+      if (err) {
+        logger.error(`Erro ao buscar padrão histórico para produto ${codigoProduto}:`, err);
+        return resolve(null);
+      }
+      
+      if (row) {
+        logger.info(`Padrão histórico encontrado para produto ${codigoProduto}: ${row.quantidadeTotal} unidades foram divididas em ${row.quantidadePorCarga} por carga`);
+        return resolve({
+          quantidadePorCarga: row.quantidadePorCarga,
+          quantidadeTotalHistorico: row.quantidadeTotal,
+          frequencia: row.frequencia
+        });
+      }
+      
+      // Se não encontrou padrão similar, buscar qualquer padrão desse produto
+      db.get(`
+        SELECT 
+          AVG(quantidadePorCarga) as mediaQuantidadePorCarga,
+          MAX(quantidadePorCarga) as maxQuantidadePorCarga,
+          COUNT(*) as frequencia
+        FROM historico_desmembramentos_reais
+        WHERE codigoProduto = ?
+      `, [codigoProduto], (err, row) => {
+        if (err || !row || !row.mediaQuantidadePorCarga) {
+          return resolve(null);
+        }
+        
+        logger.info(`Padrão histórico médio encontrado para produto ${codigoProduto}: média de ${Math.round(row.mediaQuantidadePorCarga)} unidades por carga`);
+        return resolve({
+          quantidadePorCarga: Math.round(row.mediaQuantidadePorCarga),
+          quantidadeTotalHistorico: null,
+          frequencia: row.frequencia
+        });
+      });
+    });
+  });
+}
+
+/**
+ * Calcula número de cargas necessário baseado em produtos especiais e normais
+ * 
+ * REGRA:
+ * - Produtos especiais: Cada unidade vai para uma carga separada (1 unidade por carga)
+ * - Produtos normais: Consulta histórico de faturamento para ver como foram desmembrados anteriormente
+ *   Se não houver histórico, vai sozinho em uma carga (toda a quantidade em uma carga)
+ * 
+ * Exemplo:
+ * - 5 unidades do código 6000 (especial) → 5 cargas
+ * - 2 unidades do código 50080 (especial) → 2 cargas  
+ * - 5 unidades do código 19500 (especial) → 5 cargas
+ * - 25 unidades do código 9675 (normal) → consulta histórico
+ *   Se histórico indicar 5 unidades por carga → 5 cargas (25 / 5 = 5 cargas)
+ *   Se não houver histórico → 1 carga (toda quantidade junto)
+ * Total: varia conforme histórico
+ */
+async function calcularNumeroCargasPorProdutosEspeciais(itens) {
+  const codigosProdutos = itens.map(item => item.codigoProduto || item.codigoInterno).filter(Boolean);
+  const regras = await buscarRegrasProdutosEspeciais(codigosProdutos);
+  
+  let numeroCargasEspeciais = 0;
+  let numeroCargasNormais = 0;
+  let totalProdutosEspeciais = 0;
+  let totalProdutosNormais = 0;
+  
+  for (const item of itens) {
+    const codigo = item.codigoProduto || item.codigoInterno;
+    if (!codigo) continue;
+    
+    const quantidadeMaxima = regras[codigo] || null;
+    const quantidadeItem = item.quantidade || 1;
+    
+    if (quantidadeMaxima !== null && quantidadeMaxima > 0) {
+      // Produto especial: cada unidade precisa de uma carga separada
+      numeroCargasEspeciais += quantidadeItem;
+      totalProdutosEspeciais += quantidadeItem;
+      logger.info(`Produto especial ${codigo}: ${quantidadeItem} unidades requer ${quantidadeItem} cargas (1 unidade por carga)`);
+    } else {
+      // Produto normal: consultar histórico de faturamento
+      const padraoHistorico = await buscarPadraoHistoricoProdutoNormal(codigo, quantidadeItem);
+      
+      if (padraoHistorico && padraoHistorico.quantidadePorCarga > 0) {
+        // Usar padrão do histórico
+        const cargasNecessarias = Math.ceil(quantidadeItem / padraoHistorico.quantidadePorCarga);
+        numeroCargasNormais += cargasNecessarias;
+        totalProdutosNormais += quantidadeItem;
+        logger.info(`Produto normal ${codigo}: ${quantidadeItem} unidades requer ${cargasNecessarias} cargas (baseado no histórico: ${padraoHistorico.quantidadePorCarga} unidades por carga, frequência: ${padraoHistorico.frequencia})`);
+      } else {
+        // Sem histórico: toda a quantidade vai em uma carga separada
+        numeroCargasNormais += 1;
+        totalProdutosNormais += quantidadeItem;
+        logger.info(`Produto normal ${codigo}: ${quantidadeItem} unidades requer 1 carga (sem histórico encontrado, toda quantidade junto)`);
+      }
+    }
+  }
+  
+  const numeroCargasNecessario = numeroCargasEspeciais + numeroCargasNormais;
+  
+  // Se não houver produtos, retornar 1 (mínimo)
+  if (numeroCargasNecessario === 0) {
+    return 1;
+  }
+  
+  logger.info(`Total de cargas necessárias: ${numeroCargasNecessario} (${numeroCargasEspeciais} para produtos especiais, ${numeroCargasNormais} para produtos normais)`);
+  
+  return numeroCargasNecessario;
+}
+
+/**
+ * Distribui itens entre cargas de forma equilibrada
+ * Agora considera regras de produtos especiais
+ */
+async function distribuirItensEntreCargas(itens, numeroCargas) {
+  // Buscar regras de produtos especiais
+  const codigosProdutos = itens.map(item => item.codigoProduto || item.codigoInterno).filter(Boolean);
+  const regras = await buscarRegrasProdutosEspeciais(codigosProdutos);
+  
+  // Calcular número mínimo de cargas necessário por produtos especiais
+  const numeroCargasMinimo = await calcularNumeroCargasPorProdutosEspeciais(itens);
+  const numeroCargasFinal = Math.max(numeroCargas, numeroCargasMinimo);
+  
+  if (numeroCargasFinal > numeroCargas) {
+    logger.info(`Ajustando número de cargas de ${numeroCargas} para ${numeroCargasFinal} devido a produtos especiais`);
+  }
+  
+  // Ordenar itens por prioridade:
+  // 1. Produtos especiais primeiro (para garantir distribuição correta)
+  // 2. Depois por peso (maior primeiro)
   const itensOrdenados = [...itens].sort((a, b) => {
+    const codigoA = a.codigoProduto || a.codigoInterno;
+    const codigoB = b.codigoProduto || b.codigoInterno;
+    const regraA = codigoA && regras[codigoA] ? regras[codigoA] : null;
+    const regraB = codigoB && regras[codigoB] ? regras[codigoB] : null;
+    
+    // Produtos especiais primeiro
+    if (regraA && !regraB) return -1;
+    if (!regraA && regraB) return 1;
+    
+    // Dentro de produtos especiais ou normais, ordenar por peso
     const pesoA = a.peso || 0;
     const pesoB = b.peso || 0;
     return pesoB - pesoA;
   });
   
   // Inicializar cargas
-  const cargas = Array.from({ length: numeroCargas }, () => ({
+  const cargas = Array.from({ length: numeroCargasFinal }, () => ({
     itens: [],
     pesoTotal: 0,
     volumeTotal: 0,
     valorTotal: 0
   }));
   
-  // Distribuir itens usando algoritmo "First Fit Decreasing"
+  // Contador para rastrear em qual carga vamos colocar o próximo item
+  // Primeiro vão os produtos especiais, depois os normais
+  let proximaCarga = 0;
+  
+  // Separar itens em especiais e normais
+  const itensEspeciais = [];
+  const itensNormais = [];
+  
   for (const item of itensOrdenados) {
-    // Encontrar a carga com menor peso total
-    let cargaMenorPeso = cargas[0];
-    for (const carga of cargas) {
-      if (carga.pesoTotal < cargaMenorPeso.pesoTotal) {
-        cargaMenorPeso = carga;
+    const codigo = item.codigoProduto || item.codigoInterno;
+    const quantidadeMaxima = codigo && regras[codigo] ? regras[codigo] : null;
+    
+    if (quantidadeMaxima !== null && quantidadeMaxima > 0) {
+      itensEspeciais.push(item);
+    } else {
+      itensNormais.push(item);
+    }
+  }
+  
+  // Primeiro: distribuir produtos especiais (1 unidade por carga)
+  for (const item of itensEspeciais) {
+    const codigo = item.codigoProduto || item.codigoInterno;
+    const quantidadeItem = item.quantidade || 1;
+    
+    // Cada unidade vai para uma carga separada
+    for (let unidade = 0; unidade < quantidadeItem; unidade++) {
+      if (proximaCarga >= numeroCargasFinal) {
+        logger.warn(`Atenção: Não há cargas suficientes para produto especial ${codigo}. Cargas necessárias: ${quantidadeItem}, mas só temos ${numeroCargasFinal}`);
+        break;
       }
+      
+      const cargaIndex = proximaCarga;
+      const quantidadeParaEstaCarga = 1; // Sempre 1 unidade por carga para produtos especiais
+      
+      // Calcular valores proporcionais
+      const valorUnitario = (item.valorTotal || 0) / quantidadeItem;
+      const pesoUnitario = (item.peso || 0) / quantidadeItem;
+      const volumeUnitario = (item.volume || 0) / quantidadeItem;
+      
+      cargas[cargaIndex].itens.push({
+        ...item,
+        quantidade: quantidadeParaEstaCarga,
+        quantidadeOriginal: quantidadeItem,
+        valorTotal: valorUnitario * quantidadeParaEstaCarga,
+        peso: pesoUnitario * quantidadeParaEstaCarga,
+        volume: volumeUnitario * quantidadeParaEstaCarga
+      });
+      
+      cargas[cargaIndex].pesoTotal += pesoUnitario * quantidadeParaEstaCarga;
+      cargas[cargaIndex].volumeTotal += volumeUnitario * quantidadeParaEstaCarga;
+      cargas[cargaIndex].valorTotal += valorUnitario * quantidadeParaEstaCarga;
+      
+      proximaCarga++;
     }
     
-    // Adicionar item à carga
-    cargaMenorPeso.itens.push({
-      ...item,
-      quantidade: item.quantidade // Pode ser ajustado para desmembrar item também
-    });
-    cargaMenorPeso.pesoTotal += item.peso || 0;
-    cargaMenorPeso.volumeTotal += item.volume || 0;
-    cargaMenorPeso.valorTotal += item.valorTotal || 0;
+    logger.info(`Produto especial ${codigo}: ${quantidadeItem} unidades distribuídas em ${quantidadeItem} cargas diferentes (1 unidade por carga)`);
+  }
+  
+  // Segundo: distribuir produtos normais (baseado no histórico de faturamento)
+  for (const item of itensNormais) {
+    const codigo = item.codigoProduto || item.codigoInterno;
+    const quantidadeItem = item.quantidade || 1;
+    
+    // Buscar padrão do histórico para este produto
+    const padraoHistorico = await buscarPadraoHistoricoProdutoNormal(codigo, quantidadeItem);
+    
+    if (padraoHistorico && padraoHistorico.quantidadePorCarga > 0) {
+      // Usar padrão do histórico: dividir conforme histórico
+      const quantidadePorCarga = padraoHistorico.quantidadePorCarga;
+      const cargasNecessarias = Math.ceil(quantidadeItem / quantidadePorCarga);
+      
+      // Calcular valores proporcionais
+      const valorUnitario = (item.valorTotal || 0) / quantidadeItem;
+      const pesoUnitario = (item.peso || 0) / quantidadeItem;
+      const volumeUnitario = (item.volume || 0) / quantidadeItem;
+      
+      let quantidadeRestante = quantidadeItem;
+      
+      for (let i = 0; i < cargasNecessarias && proximaCarga < numeroCargasFinal; i++) {
+        const quantidadeNestaCarga = Math.min(quantidadePorCarga, quantidadeRestante);
+        
+        cargas[proximaCarga].itens.push({
+          ...item,
+          quantidade: quantidadeNestaCarga,
+          quantidadeOriginal: quantidadeItem,
+          valorTotal: valorUnitario * quantidadeNestaCarga,
+          peso: pesoUnitario * quantidadeNestaCarga,
+          volume: volumeUnitario * quantidadeNestaCarga
+        });
+        
+        cargas[proximaCarga].pesoTotal += pesoUnitario * quantidadeNestaCarga;
+        cargas[proximaCarga].volumeTotal += volumeUnitario * quantidadeNestaCarga;
+        cargas[proximaCarga].valorTotal += valorUnitario * quantidadeNestaCarga;
+        
+        quantidadeRestante -= quantidadeNestaCarga;
+        proximaCarga++;
+      }
+      
+      if (quantidadeRestante > 0) {
+        logger.warn(`Atenção: ${quantidadeRestante} unidades do produto normal ${codigo} não puderam ser distribuídas`);
+      }
+      
+      logger.info(`Produto normal ${codigo}: ${quantidadeItem} unidades distribuídas em ${cargasNecessarias} cargas (baseado no histórico: ${quantidadePorCarga} unidades por carga)`);
+    } else {
+      // Sem histórico: toda a quantidade vai em uma carga separada
+      if (proximaCarga >= numeroCargasFinal) {
+        logger.warn(`Atenção: Não há cargas suficientes para produto normal ${codigo}. Precisa de 1 carga, mas só temos ${numeroCargasFinal}`);
+        break;
+      }
+      
+      const cargaIndex = proximaCarga;
+      
+      // Produto normal: toda a quantidade vai em uma carga separada
+      cargas[cargaIndex].itens.push({
+        ...item,
+        quantidade: quantidadeItem,
+        quantidadeOriginal: quantidadeItem,
+        valorTotal: item.valorTotal || 0,
+        peso: item.peso || 0,
+        volume: item.volume || 0
+      });
+      
+      cargas[cargaIndex].pesoTotal += item.peso || 0;
+      cargas[cargaIndex].volumeTotal += item.volume || 0;
+      cargas[cargaIndex].valorTotal += item.valorTotal || 0;
+      
+      proximaCarga++;
+      
+      logger.info(`Produto normal ${codigo}: ${quantidadeItem} unidades em 1 carga (sem histórico encontrado, toda quantidade junto)`);
+    }
   }
   
   return cargas;
@@ -138,8 +446,8 @@ async function desmembrarNotaFiscal(notaFiscalId, numeroCargas, userId, metodo =
             numeroCargas = await sugerirNumeroCargas(nota);
           }
           
-          // Distribuir itens
-          const cargasDistribuidas = distribuirItensEntreCargas(itens, numeroCargas);
+          // Distribuir itens (agora async - considera produtos especiais)
+          const cargasDistribuidas = await distribuirItensEntreCargas(itens, numeroCargas);
           
           // Criar cargas no banco
           const cargasCriadas = [];
