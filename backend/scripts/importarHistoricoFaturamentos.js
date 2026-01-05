@@ -60,87 +60,100 @@ function processarLinhaCSV(linha, numeroLinha) {
 }
 
 /**
- * Agrupa itens por nota fiscal e calcula desmembramentos
+ * Processa itens do CSV mantendo a ordem e agrupando por cargas
+ * 
+ * REGRA: Produtos consecutivos da mesma NF = mesma carga
+ * Quando a NF muda, inicia nova carga (nova NF)
  */
-function agruparPorNotaFiscal(itens) {
-  const notasFiscais = {};
-  
-  for (const item of itens) {
-    if (!notasFiscais[item.numeroNotaFiscal]) {
-      notasFiscais[item.numeroNotaFiscal] = [];
-    }
-    notasFiscais[item.numeroNotaFiscal].push(item);
-  }
-  
-  return notasFiscais;
-}
-
-/**
- * Processa desmembramentos de uma nota fiscal
- * Identifica quantas cargas foram necessárias e como os itens foram distribuídos
- */
-function processarDesmembramentos(itensNota) {
+function processarDesmembramentos(itens) {
   const desmembramentos = [];
-  let numeroCarga = 1;
+  const cargas = [];
+  let cargaAtual = null;
+  let numeroCargaGlobal = 1;
   let sequenciaItem = 1;
   
-  // Agrupar por código de produto
-  const itensPorCodigo = {};
-  for (const item of itensNota) {
-    if (!itensPorCodigo[item.codigoProduto]) {
-      itensPorCodigo[item.codigoProduto] = {
-        codigoProduto: item.codigoProduto,
-        descricaoProduto: item.descricaoProduto,
-        unidade: item.unidade,
-        quantidadeTotal: 0,
-        itens: []
+  // Processar cada item na ordem do CSV
+  for (const item of itens) {
+    // Se mudou a nota fiscal, criar nova carga ou nova sequência
+    if (!cargaAtual || cargaAtual.numeroNotaFiscal !== item.numeroNotaFiscal) {
+      // Se já havia uma carga, finalizar ela
+      if (cargaAtual) {
+        cargas.push(cargaAtual);
+      }
+      
+      // Criar nova carga
+      cargaAtual = {
+        numeroNotaFiscal: item.numeroNotaFiscal,
+        numeroCarga: numeroCargaGlobal++,
+        produtos: []
       };
     }
-    itensPorCodigo[item.codigoProduto].quantidadeTotal += item.quantidade;
-    itensPorCodigo[item.codigoProduto].itens.push(item);
+    
+    // Adicionar produto à carga atual
+    cargaAtual.produtos.push({
+      codigoProduto: item.codigoProduto,
+      descricaoProduto: item.descricaoProduto,
+      unidade: item.unidade,
+      quantidade: item.quantidade
+    });
   }
   
-  // Processar cada código de produto
-  for (const codigoProduto of Object.keys(itensPorCodigo)) {
-    const produto = itensPorCodigo[codigoProduto];
-    const isEspecial = CODIGOS_ESPECIAIS.includes(codigoProduto);
-    const quantidadeMaximaPorCarga = isEspecial ? 1 : null;
+  // Adicionar última carga
+  if (cargaAtual) {
+    cargas.push(cargaAtual);
+  }
+  
+  // Converter cargas para formato de desmembramentos
+  for (const carga of cargas) {
+    // Agrupar produtos iguais na mesma carga (somar quantidades)
+    const produtosAgrupados = {};
+    for (const produto of carga.produtos) {
+      const key = `${produto.codigoProduto}`;
+      if (!produtosAgrupados[key]) {
+        produtosAgrupados[key] = {
+          codigoProduto: produto.codigoProduto,
+          descricaoProduto: produto.descricaoProduto,
+          unidade: produto.unidade,
+          quantidadeTotal: 0,
+          quantidadePorCarga: 0
+        };
+      }
+      produtosAgrupados[key].quantidadeTotal += produto.quantidade;
+      produtosAgrupados[key].quantidadePorCarga += produto.quantidade;
+    }
     
-    let quantidadeRestante = produto.quantidadeTotal;
-    let cargaAtual = numeroCarga;
-    
-    // Se for produto especial, cada unidade vai para uma carga diferente
-    if (isEspecial && quantidadeMaximaPorCarga === 1) {
-      for (let i = 0; i < produto.quantidadeTotal; i++) {
+    // Processar cada produto agrupado
+    for (const key of Object.keys(produtosAgrupados)) {
+      const produto = produtosAgrupados[key];
+      const isEspecial = CODIGOS_ESPECIAIS.includes(produto.codigoProduto);
+      
+      // Se for produto especial, cada unidade vai para uma carga separada
+      if (isEspecial) {
+        for (let i = 0; i < produto.quantidadeTotal; i++) {
+          desmembramentos.push({
+            numeroNotaFiscal: carga.numeroNotaFiscal,
+            codigoProduto: produto.codigoProduto,
+            descricaoProduto: produto.descricaoProduto,
+            unidade: produto.unidade,
+            quantidadeTotal: produto.quantidadeTotal,
+            quantidadePorCarga: 1,
+            numeroCarga: carga.numeroCarga + i,
+            numeroSequencia: sequenciaItem++
+          });
+        }
+      } else {
+        // Produto normal: quantidade total na carga
         desmembramentos.push({
-          numeroNotaFiscal: itensNota[0].numeroNotaFiscal,
-          codigoProduto: codigoProduto,
+          numeroNotaFiscal: carga.numeroNotaFiscal,
+          codigoProduto: produto.codigoProduto,
           descricaoProduto: produto.descricaoProduto,
           unidade: produto.unidade,
           quantidadeTotal: produto.quantidadeTotal,
-          quantidadePorCarga: 1,
-          numeroCarga: cargaAtual + i,
+          quantidadePorCarga: produto.quantidadePorCarga,
+          numeroCarga: carga.numeroCarga,
           numeroSequencia: sequenciaItem++
         });
       }
-      
-      // Atualizar número máximo de cargas necessárias
-      if (cargaAtual + produto.quantidadeTotal - 1 > numeroCarga) {
-        numeroCarga = cargaAtual + produto.quantidadeTotal;
-      }
-    } else {
-      // Produto normal: pode ir tudo na mesma carga (ou distribuído)
-      // Por padrão, colocamos tudo na primeira carga
-      desmembramentos.push({
-        numeroNotaFiscal: itensNota[0].numeroNotaFiscal,
-        codigoProduto: codigoProduto,
-        descricaoProduto: produto.descricaoProduto,
-        unidade: produto.unidade,
-        quantidadeTotal: produto.quantidadeTotal,
-        quantidadePorCarga: produto.quantidadeTotal,
-        numeroCarga: cargaAtual,
-        numeroSequencia: sequenciaItem++
-      });
     }
   }
   
@@ -265,52 +278,53 @@ async function importarHistorico(arquivoCSV) {
     console.log(`   • ${regras.inseridos} regras inseridas`);
     console.log(`   • ${regras.jaExistentes} regras já existentes`);
     
-    // Agrupar por nota fiscal
-    const notasFiscais = agruparPorNotaFiscal(itens);
+    // Processar desmembramentos (mantém ordem do CSV)
     console.log('────────────────────────────────────────────────────────────');
-    console.log(`📦 ${Object.keys(notasFiscais).length} notas fiscais encontradas`);
+    console.log(`📦 Processando ${itens.length} itens do CSV...`);
     
-    // Processar cada nota fiscal
-    let totalDesmembramentos = 0;
+    const desmembramentos = processarDesmembramentos(itens);
+    const totalDesmembramentos = desmembramentos.length;
     let totalInseridos = 0;
     let totalErros = 0;
     
-    for (const numeroNotaFiscal of Object.keys(notasFiscais)) {
-      const itensNota = notasFiscais[numeroNotaFiscal];
-      const desmembramentos = processarDesmembramentos(itensNota);
-      totalDesmembramentos += desmembramentos.length;
+    // Inserir desmembramentos no banco
+    for (const desmembramento of desmembramentos) {
       
-      // Inserir desmembramentos no banco
-      for (const desmembramento of desmembramentos) {
-        const id = uuidv4();
-        
-        await new Promise((resolve) => {
-          db.run(
-            'INSERT INTO historico_desmembramentos_reais (id, numeroNotaFiscal, codigoProduto, descricaoProduto, unidade, quantidadeTotal, quantidadePorCarga, numeroCarga, numeroSequencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-              id,
-              desmembramento.numeroNotaFiscal,
-              desmembramento.codigoProduto,
-              desmembramento.descricaoProduto,
-              desmembramento.unidade,
-              desmembramento.quantidadeTotal,
-              desmembramento.quantidadePorCarga,
-              desmembramento.numeroCarga,
-              desmembramento.numeroSequencia
-            ],
-            (err) => {
-              if (err) {
-                console.error(`Erro ao inserir desmembramento:`, err);
-                totalErros++;
-              } else {
-                totalInseridos++;
-              }
-              resolve();
+      const id = uuidv4();
+      
+      await new Promise((resolve) => {
+        db.run(
+          'INSERT INTO historico_desmembramentos_reais (id, numeroNotaFiscal, codigoProduto, descricaoProduto, unidade, quantidadeTotal, quantidadePorCarga, numeroCarga, numeroSequencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            id,
+            desmembramento.numeroNotaFiscal,
+            desmembramento.codigoProduto,
+            desmembramento.descricaoProduto,
+            desmembramento.unidade,
+            desmembramento.quantidadeTotal,
+            desmembramento.quantidadePorCarga,
+            desmembramento.numeroCarga,
+            desmembramento.numeroSequencia
+          ],
+          (err) => {
+            if (err) {
+              console.error(`Erro ao inserir desmembramento:`, err);
+              totalErros++;
+            } else {
+              totalInseridos++;
             }
-          );
-        });
-      }
+            resolve();
+          }
+        );
+      });
     }
+    
+    // Contar notas fiscais e cargas únicas
+    const notasFiscaisUnicas = new Set(desmembramentos.map(d => d.numeroNotaFiscal));
+    const cargasUnicas = new Set(desmembramentos.map(d => `${d.numeroNotaFiscal}-${d.numeroCarga}`));
+    
+    console.log(`📦 ${notasFiscaisUnicas.size} notas fiscais únicas`);
+    console.log(`🚚 ${cargasUnicas.size} cargas únicas`);
     
     console.log('────────────────────────────────────────────────────────────');
     console.log('✅ IMPORTAÇÃO CONCLUÍDA');

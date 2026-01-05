@@ -91,26 +91,27 @@ router.post('/upload-historico', async (req, res) => {
 /**
  * GET /api/configuracoes/historico
  * 
- * Lista histórico de desmembramentos importados
+ * Lista histórico de desmembramentos importados agrupados por carga
  */
 router.get('/historico', (req, res) => {
   // Log para debug
   logger.info(`Listar histórico - User: ${req.user?.username || 'N/A'}, Role: ${req.user?.role || 'N/A'}`);
   try {
     const db = getDatabase();
-    const { page = 1, limit = 50, numeroNotaFiscal, codigoProduto } = req.query;
+    const { page = 1, limit = 20, numeroNotaFiscal, codigoProduto } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
+    // Buscar cargas agrupadas por nota fiscal e número de carga
     let query = `
       SELECT 
         numeroNotaFiscal,
-        codigoProduto,
-        descricaoProduto,
-        unidade,
-        quantidadeTotal,
-        quantidadePorCarga,
         numeroCarga,
-        COUNT(*) as frequencia
+        GROUP_CONCAT(
+          codigoProduto || '|' || 
+          COALESCE(descricaoProduto, '') || '|' || 
+          quantidadePorCarga || '|' || 
+          COALESCE(unidade, 'UN')
+        , '||') as produtos
       FROM historico_desmembramentos_reais
       WHERE 1=1
     `;
@@ -126,14 +127,14 @@ router.get('/historico', (req, res) => {
       params.push(codigoProduto);
     }
     
-    query += ' GROUP BY numeroNotaFiscal, codigoProduto, quantidadeTotal, quantidadePorCarga';
-    query += ' ORDER BY numeroNotaFiscal DESC, codigoProduto ASC';
+    query += ' GROUP BY numeroNotaFiscal, numeroCarga';
+    query += ' ORDER BY numeroNotaFiscal DESC, numeroCarga ASC';
     query += ' LIMIT ? OFFSET ?';
     params.push(parseInt(limit), offset);
     
-    // Buscar total de registros
+    // Buscar total de cargas
     let countQuery = `
-      SELECT COUNT(DISTINCT numeroNotaFiscal || codigoProduto || quantidadeTotal || quantidadePorCarga) as total
+      SELECT COUNT(DISTINCT numeroNotaFiscal || '-' || numeroCarga) as total
       FROM historico_desmembramentos_reais
       WHERE 1=1
     `;
@@ -167,9 +168,30 @@ router.get('/historico', (req, res) => {
           });
         }
         
+        // Processar cargas e seus produtos
+        const cargas = (rows || []).map(row => {
+          const produtos = row.produtos ? row.produtos.split('||').map(prod => {
+            const [codigo, descricao, quantidade, unidade] = prod.split('|');
+            return {
+              codigoProduto: codigo,
+              descricao: descricao || '',
+              quantidade: parseInt(quantidade) || 0,
+              unidade: unidade || 'UN'
+            };
+          }) : [];
+          
+          return {
+            numeroNotaFiscal: row.numeroNotaFiscal,
+            numeroCarga: row.numeroCarga,
+            produtos: produtos,
+            totalProdutos: produtos.length,
+            totalQuantidade: produtos.reduce((sum, p) => sum + p.quantidade, 0)
+          };
+        });
+        
         res.json({
           success: true,
-          historico: rows || [],
+          cargas: cargas,
           paginacao: {
             pagina: parseInt(page),
             limite: parseInt(limit),

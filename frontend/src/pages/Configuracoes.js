@@ -8,6 +8,7 @@ const Configuracoes = () => {
   const [message, setMessage] = useState(null);
   const [messageType, setMessageType] = useState('success');
   const [historico, setHistorico] = useState([]);
+  const [cargas, setCargas] = useState([]);
   const [estatisticas, setEstatisticas] = useState(null);
   const [loadingHistorico, setLoadingHistorico] = useState(true);
   const [filtroNota, setFiltroNota] = useState('');
@@ -132,7 +133,7 @@ const Configuracoes = () => {
       });
       
       if (response.data.success) {
-        setHistorico(response.data.historico);
+        setCargas(response.data.cargas || []);
         setPaginacao(response.data.paginacao);
       }
     } catch (error) {
@@ -222,12 +223,26 @@ const Configuracoes = () => {
                 <li><strong>Unidade</strong> - Ex: CA, UN, KG</li>
                 <li><strong>Quantidade</strong> - Ex: 1, 5, 10</li>
               </ul>
-              <p><strong>Exemplo:</strong></p>
+              <p><strong>⚠️ IMPORTANTE - Como o sistema identifica as cargas:</strong></p>
+              <ul>
+                <li>Cada linha do CSV representa um <strong>produto em uma carga</strong></li>
+                <li>Produtos da <strong>mesma nota fiscal</strong> que estão <strong>consecutivos no CSV</strong> serão agrupados na <strong>mesma carga</strong></li>
+                <li>Quando a nota fiscal muda, inicia uma nova carga (ou nova nota fiscal)</li>
+                <li><strong>Produtos especiais</strong> (6000, 50080, 19500) devem ter quantidade = 1 e estar sozinhos em uma linha</li>
+              </ul>
+              <p><strong>Exemplo de CSV correto:</strong></p>
               <code>
+                NF-123456,9675,CIMENT O VOTORAN 50KG TODAS,UN,14<br />
+                NF-123456,17704,TIJOLOS 8 FUROS,UN,1000<br />
                 NF-123456,6000,AREIA MEDIA * CARRADA 5 METROS *,CA,1<br />
                 NF-123456,50080,ARGAMASSA REBOCO * CARRADA 5 METROS *,CA,1<br />
-                NF-123456,9675,CIMENT O VOTORAN 50KG TODAS,UN,14
+                NF-123457,9675,CIMENT O VOTORAN 50KG TODAS,UN,20
               </code>
+              <p><strong>Resultado:</strong></p>
+              <ul>
+                <li><strong>Carga 1 (NF-123456):</strong> CIMENT (14), TIJOLOS (1000), AREIA (1), ARGAMASSA (1)</li>
+                <li><strong>Carga 2 (NF-123457):</strong> CIMENT (20)</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -331,46 +346,59 @@ const Configuracoes = () => {
 
             {loadingHistorico ? (
               <div className="loading-box">Carregando histórico...</div>
-            ) : historico.length === 0 ? (
+            ) : cargas.length === 0 ? (
               <div className="empty-box">
                 <p>Nenhum histórico encontrado. Importe um arquivo CSV para começar.</p>
+                <div className="info-box" style={{ marginTop: '20px' }}>
+                  <h4>📋 Formato do CSV esperado:</h4>
+                  <p>Cada linha deve conter:</p>
+                  <ul>
+                    <li><strong>Número da Nota Fiscal</strong> (Ex: NF-123456)</li>
+                    <li><strong>Código do Produto</strong> (Ex: 6000)</li>
+                    <li><strong>Descrição do Produto</strong> (Ex: AREIA MEDIA * CARRADA 5 METROS *)</li>
+                    <li><strong>Unidade</strong> (Ex: CA, UN, KG)</li>
+                    <li><strong>Quantidade</strong> (Ex: 1, 5, 10)</li>
+                  </ul>
+                  <p><strong>Importante:</strong> Se uma nota fiscal tem múltiplos produtos em uma mesma carga, eles devem estar em linhas consecutivas com o mesmo número de nota.</p>
+                  <p><strong>Exemplo:</strong></p>
+                  <code>
+                    NF-123456,6000,AREIA MEDIA * CARRADA 5 METROS *,CA,1<br />
+                    NF-123456,9675,CIMENT O VOTORAN 50KG TODAS,UN,14<br />
+                    NF-123457,6000,AREIA MEDIA * CARRADA 5 METROS *,CA,2
+                  </code>
+                </div>
               </div>
             ) : (
               <>
-                <div className="table-container">
-                  <table className="historico-table">
-                    <thead>
-                      <tr>
-                        <th>Nota Fiscal</th>
-                        <th>Código Produto</th>
-                        <th>Descrição</th>
-                        <th>Unidade</th>
-                        <th>Quantidade Total</th>
-                        <th>Quantidade por Carga</th>
-                        <th>Cargas Necessárias</th>
-                        <th>Frequência</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historico.map((item, index) => (
-                        <tr key={index}>
-                          <td>{item.numeroNotaFiscal}</td>
-                          <td><strong>{item.codigoProduto}</strong></td>
-                          <td>{item.descricaoProduto || '-'}</td>
-                          <td>{item.unidade || '-'}</td>
-                          <td>{item.quantidadeTotal}</td>
-                          <td>{item.quantidadePorCarga}</td>
-                          <td>
-                            {item.quantidadePorCarga > 0 
-                              ? Math.ceil(item.quantidadeTotal / item.quantidadePorCarga)
-                              : '-'
-                            }
-                          </td>
-                          <td>{item.frequencia}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="cargas-grid">
+                  {cargas.map((carga, index) => (
+                    <div key={index} className="carga-card">
+                      <div className="carga-card-header">
+                        <div className="carga-card-title">
+                          <span className="carga-nf">{carga.numeroNotaFiscal}</span>
+                          <span className="carga-numero">Carga #{carga.numeroCarga}</span>
+                        </div>
+                        <div className="carga-card-stats">
+                          <span>{carga.totalProdutos} produto(s)</span>
+                          <span>•</span>
+                          <span>{carga.totalQuantidade} unidade(s)</span>
+                        </div>
+                      </div>
+                      <div className="carga-card-body">
+                        <div className="carga-produtos">
+                          {carga.produtos.map((produto, prodIndex) => (
+                            <div key={prodIndex} className="carga-produto-item">
+                              <div className="produto-codigo">{produto.codigoProduto}</div>
+                              <div className="produto-descricao">{produto.descricao || 'Sem descrição'}</div>
+                              <div className="produto-quantidade">
+                                <strong>{produto.quantidade}</strong> {produto.unidade}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {paginacao.totalPaginas > 1 && (
