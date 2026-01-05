@@ -11,7 +11,8 @@
     "simular-erp-hoje": "node scripts/simular-erp-envio-hoje.js",
     "migrar": "node scripts/criar-migracao-tabelas.js",
     "importar-historico": "node scripts/importarHistoricoFaturamentos.js",
-    "criar-tabelas-ml": "node scripts/criar-tabelas-ml.js"
+    "criar-tabelas-ml": "node scripts/criar-tabelas-ml.js",
+    "preparar-dados-ml": "node scripts/preparar-dados-treinamento-ml.js"
   },
   "keywords": [
     "logistics",
