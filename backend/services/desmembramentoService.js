@@ -11,16 +11,35 @@ const { logger } = require('../utils/logger');
 
 /**
  * Sugere número de cargas baseado em histórico e produtos da NF
+ * 
+ * Agora integrado com ML Service (com fallback para regras fixas)
  */
 async function sugerirNumeroCargas(notaFiscal, itens = null) {
   const db = getDatabase();
   
   return new Promise(async (resolve, reject) => {
     try {
-      // Se temos itens, calcular baseado em produtos especiais e histórico
+      // Tentar usar ML primeiro (se disponível)
+      try {
+        const mlService = require('./mlService');
+        const predicao = await mlService.fazerPredicao(notaFiscal, itens || []);
+        
+        // Se ML retornou sugestão e confiança >= 0.6, usar ML
+        if (predicao.numeroCargasSugerido !== null && predicao.confianca >= 0.6) {
+          logger.info(`Número de cargas sugerido por ML: ${predicao.numeroCargasSugerido} (confiança: ${predicao.confianca})`);
+          resolve(predicao.numeroCargasSugerido);
+          return;
+        }
+        
+        logger.info(`ML retornou baixa confiança (${predicao.confianca}), usando fallback (regras fixas)`);
+      } catch (mlError) {
+        logger.warn('Erro ao usar ML Service, usando fallback (regras fixas):', mlError.message);
+      }
+      
+      // Fallback: Se temos itens, calcular baseado em produtos especiais e histórico
       if (itens && itens.length > 0) {
         const numeroCargasCalculado = await calcularNumeroCargasPorProdutosEspeciais(itens);
-        logger.info(`Número de cargas calculado baseado em produtos: ${numeroCargasCalculado}`);
+        logger.info(`Número de cargas calculado baseado em produtos (fallback): ${numeroCargasCalculado}`);
         resolve(numeroCargasCalculado);
         return;
       }
