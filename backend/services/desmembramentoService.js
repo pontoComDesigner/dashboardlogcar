@@ -10,39 +10,43 @@ const { v4: uuidv4 } = require('uuid');
 const { logger } = require('../utils/logger');
 
 /**
- * Sugere número de cargas baseado em histórico
+ * Sugere número de cargas baseado em histórico e produtos da NF
  */
-async function sugerirNumeroCargas(notaFiscal) {
+async function sugerirNumeroCargas(notaFiscal, itens = null) {
   const db = getDatabase();
   
-  return new Promise((resolve, reject) => {
-    // Buscar padrões similares no histórico
-    const query = `
-      SELECT AVG(numeroNotasCriadas) as mediaCargas, COUNT(*) as frequencia
-      FROM desmembramentos_historico dh
-      INNER JOIN notas_fiscais nf ON dh.notaFiscalId = nf.id
-      WHERE nf.clienteCnpjCpf = ? 
-        AND ABS(nf.valorTotal - ?) / ? < 0.3
-      GROUP BY nf.clienteCnpjCpf
-    `;
-    
-    db.get(query, [notaFiscal.clienteCnpjCpf, notaFiscal.valorTotal, notaFiscal.valorTotal || 1], (err, row) => {
-      if (err) {
-        logger.error('Erro ao buscar padrões:', err);
-        // Em caso de erro, usar regra heurística padrão
-        resolve(calcularNumeroCargasHeuristico(notaFiscal));
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Se temos itens, calcular baseado em produtos especiais e histórico
+      if (itens && itens.length > 0) {
+        const numeroCargasCalculado = await calcularNumeroCargasPorProdutosEspeciais(itens);
+        logger.info(`Número de cargas calculado baseado em produtos: ${numeroCargasCalculado}`);
+        resolve(numeroCargasCalculado);
         return;
       }
       
-      if (row && row.mediaCargas && row.frequencia > 0) {
-        const sugerido = Math.ceil(row.mediaCargas);
-        logger.info(`Padrão encontrado: ${sugerido} cargas (frequência: ${row.frequencia})`);
-        resolve(sugerido);
-      } else {
-        // Não há histórico, usar regra heurística
+      // Se não temos itens, buscar da nota fiscal
+      db.all('SELECT * FROM nota_fiscal_itens WHERE notaFiscalId = ?', [notaFiscal.id], async (err, itensNF) => {
+        if (err) {
+          logger.error('Erro ao buscar itens da nota fiscal:', err);
+          resolve(calcularNumeroCargasHeuristico(notaFiscal));
+          return;
+        }
+        
+        if (itensNF && itensNF.length > 0) {
+          const numeroCargasCalculado = await calcularNumeroCargasPorProdutosEspeciais(itensNF);
+          logger.info(`Número de cargas calculado baseado em produtos: ${numeroCargasCalculado}`);
+          resolve(numeroCargasCalculado);
+          return;
+        }
+        
+        // Se não há itens, usar regra heurística
         resolve(calcularNumeroCargasHeuristico(notaFiscal));
-      }
-    });
+      });
+    } catch (error) {
+      logger.error('Erro ao sugerir número de cargas:', error);
+      resolve(calcularNumeroCargasHeuristico(notaFiscal));
+    }
   });
 }
 

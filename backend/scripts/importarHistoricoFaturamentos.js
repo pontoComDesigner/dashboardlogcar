@@ -29,7 +29,7 @@ function processarLinhaCSV(linha, numeroLinha) {
   const campos = linha.split(',').map(campo => campo.trim());
   
   if (campos.length < 5) {
-    logger.warn(`Linha ${numeroLinha} ignorada: formato inválido (esperado: 5 campos, encontrado: ${campos.length})`);
+    console.warn(`Linha ${numeroLinha} ignorada: formato inválido (esperado: 5 campos, encontrado: ${campos.length})`);
     return null;
   }
   
@@ -37,14 +37,14 @@ function processarLinhaCSV(linha, numeroLinha) {
   
   // Validar campos obrigatórios
   if (!numeroNotaFiscal || !codigoProduto || !quantidade) {
-    logger.warn(`Linha ${numeroLinha} ignorada: campos obrigatórios faltando`);
+    console.warn(`Linha ${numeroLinha} ignorada: campos obrigatórios faltando`);
     return null;
   }
   
   // Validar quantidade
   const quantidadeNum = parseInt(quantidade, 10);
   if (isNaN(quantidadeNum) || quantidadeNum <= 0) {
-    logger.warn(`Linha ${numeroLinha} ignorada: quantidade inválida (${quantidade})`);
+    console.warn(`Linha ${numeroLinha} ignorada: quantidade inválida (${quantidade})`);
     return null;
   }
   
@@ -163,7 +163,7 @@ function cadastrarRegrasProdutosEspeciais(db) {
         [codigoProduto],
         (err, row) => {
           if (err) {
-            logger.error(`Erro ao verificar regra para produto ${codigoProduto}:`, err);
+            console.error(`Erro ao verificar regra para produto ${codigoProduto}:`, err);
             processados++;
             if (processados === CODIGOS_ESPECIAIS.length) {
               resolve({ inseridos, jaExistentes });
@@ -179,10 +179,10 @@ function cadastrarRegrasProdutosEspeciais(db) {
               (err) => {
                 processados++;
                 if (err) {
-                  logger.error(`Erro ao atualizar regra para produto ${codigoProduto}:`, err);
+                  console.error(`Erro ao atualizar regra para produto ${codigoProduto}:`, err);
                 } else {
                   jaExistentes++;
-                  logger.info(`Regra atualizada para produto ${codigoProduto}: 1 unidade por carga`);
+                  console.log(`Regra atualizada para produto ${codigoProduto}: 1 unidade por carga`);
                 }
                 
                 if (processados === CODIGOS_ESPECIAIS.length) {
@@ -199,10 +199,10 @@ function cadastrarRegrasProdutosEspeciais(db) {
               (err) => {
                 processados++;
                 if (err) {
-                  logger.error(`Erro ao inserir regra para produto ${codigoProduto}:`, err);
+                  console.error(`Erro ao inserir regra para produto ${codigoProduto}:`, err);
                 } else {
                   inseridos++;
-                  logger.info(`Regra cadastrada para produto ${codigoProduto}: 1 unidade por carga`);
+                  console.log(`Regra cadastrada para produto ${codigoProduto}: 1 unidade por carga`);
                 }
                 
                 if (processados === CODIGOS_ESPECIAIS.length) {
@@ -224,28 +224,28 @@ async function importarHistorico(arquivoCSV) {
   const db = getDatabase();
   
   try {
-    logger.info('════════════════════════════════════════════════════════════');
-    logger.info('📥 IMPORTANDO HISTÓRICO DE FATURAMENTOS');
-    logger.info('════════════════════════════════════════════════════════════');
+    console.log('════════════════════════════════════════════════════════════');
+    console.log('📥 IMPORTANDO HISTÓRICO DE FATURAMENTOS');
+    console.log('════════════════════════════════════════════════════════════');
     
     // Verificar se arquivo existe
     if (!fs.existsSync(arquivoCSV)) {
-      logger.error(`❌ Arquivo não encontrado: ${arquivoCSV}`);
+      console.error(`❌ Arquivo não encontrado: ${arquivoCSV}`);
       return;
     }
     
     // Ler arquivo
-    logger.info(`📄 Lendo arquivo: ${arquivoCSV}`);
+    console.log(`📄 Lendo arquivo: ${arquivoCSV}`);
     const conteudo = fs.readFileSync(arquivoCSV, 'utf-8');
     const linhas = conteudo.split('\n').filter(linha => linha.trim().length > 0);
     
     // Remover cabeçalho se existir
-    if (linhas[0] && linhas[0].toLowerCase().includes('número') || linhas[0].toLowerCase().includes('numero')) {
+    if (linhas[0] && (linhas[0].toLowerCase().includes('número') || linhas[0].toLowerCase().includes('numero'))) {
       linhas.shift();
-      logger.info('📋 Cabeçalho removido');
+      console.log('📋 Cabeçalho removido');
     }
     
-    logger.info(`📊 Total de linhas: ${linhas.length}`);
+    console.log(`📊 Total de linhas: ${linhas.length}`);
     
     // Processar linhas
     const itens = [];
@@ -256,19 +256,19 @@ async function importarHistorico(arquivoCSV) {
       }
     }
     
-    logger.info(`✅ ${itens.length} itens válidos processados`);
+    console.log(`✅ ${itens.length} itens válidos processados`);
     
     // Cadastrar regras de produtos especiais
-    logger.info('────────────────────────────────────────────────────────────');
-    logger.info('🔧 Cadastrando regras de produtos especiais...');
+    console.log('────────────────────────────────────────────────────────────');
+    console.log('🔧 Cadastrando regras de produtos especiais...');
     const regras = await cadastrarRegrasProdutosEspeciais(db);
-    logger.info(`   • ${regras.inseridos} regras inseridas`);
-    logger.info(`   • ${regras.jaExistentes} regras já existentes`);
+    console.log(`   • ${regras.inseridos} regras inseridas`);
+    console.log(`   • ${regras.jaExistentes} regras já existentes`);
     
     // Agrupar por nota fiscal
     const notasFiscais = agruparPorNotaFiscal(itens);
-    logger.info('────────────────────────────────────────────────────────────');
-    logger.info(`📦 ${Object.keys(notasFiscais).length} notas fiscais encontradas`);
+    console.log('────────────────────────────────────────────────────────────');
+    console.log(`📦 ${Object.keys(notasFiscais).length} notas fiscais encontradas`);
     
     // Processar cada nota fiscal
     let totalDesmembramentos = 0;
@@ -300,7 +300,7 @@ async function importarHistorico(arquivoCSV) {
             ],
             (err) => {
               if (err) {
-                logger.error(`Erro ao inserir desmembramento:`, err);
+                console.error(`Erro ao inserir desmembramento:`, err);
                 totalErros++;
               } else {
                 totalInseridos++;
@@ -312,19 +312,19 @@ async function importarHistorico(arquivoCSV) {
       }
     }
     
-    logger.info('────────────────────────────────────────────────────────────');
-    logger.success('✅ IMPORTAÇÃO CONCLUÍDA');
-    logger.info(`   • ${totalDesmembramentos} desmembramentos processados`);
-    logger.info(`   • ${totalInseridos} registros inseridos`);
+    console.log('────────────────────────────────────────────────────────────');
+    console.log('✅ IMPORTAÇÃO CONCLUÍDA');
+    console.log(`   • ${totalDesmembramentos} desmembramentos processados`);
+    console.log(`   • ${totalInseridos} registros inseridos`);
     if (totalErros > 0) {
-      logger.warn(`   • ${totalErros} erros encontrados`);
+      console.log(`   • ${totalErros} erros encontrados`);
     }
     
-    logger.info('\n💡 As regras de produtos especiais foram cadastradas automaticamente.');
-    logger.info('💡 Os produtos especiais (6000, 50080, 19500) agora só podem ter 1 unidade por carga.\n');
+    console.log('\n💡 As regras de produtos especiais foram cadastradas automaticamente.');
+    console.log('💡 Os produtos especiais (6000, 50080, 19500) agora só podem ter 1 unidade por carga.\n');
     
   } catch (error) {
-    logger.error('❌ Erro ao importar histórico:', error);
+    console.error('❌ Erro ao importar histórico:', error);
     throw error;
   }
 }
@@ -334,9 +334,9 @@ if (require.main === module) {
   const arquivoCSV = process.argv[2];
   
   if (!arquivoCSV) {
-    logger.error('❌ Uso: node importarHistoricoFaturamentos.js <arquivo.csv>');
-    logger.info('\n📝 Exemplo:');
-    logger.info('   node importarHistoricoFaturamentos.js historico.csv\n');
+    console.error('❌ Uso: node importarHistoricoFaturamentos.js <arquivo.csv>');
+    console.log('\n📝 Exemplo:');
+    console.log('   node importarHistoricoFaturamentos.js historico.csv\n');
     process.exit(1);
   }
   

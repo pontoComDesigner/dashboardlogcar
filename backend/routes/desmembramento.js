@@ -240,10 +240,33 @@ router.post('/desmembrar', requireRole('LOGISTICA', 'ADMINISTRATIVO'), async (re
         req.user.id
       );
     } else {
+      // Se não foi especificado número de cargas, calcular automaticamente
+      let numeroCargasFinal = numeroCargas;
+      if (!numeroCargasFinal) {
+        const db = getDatabase();
+        const nota = await new Promise((resolve, reject) => {
+          db.get('SELECT * FROM notas_fiscais WHERE id = ?', [notaFiscalId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        });
+        
+        if (nota) {
+          const itens = await new Promise((resolve, reject) => {
+            db.all('SELECT * FROM nota_fiscal_itens WHERE notaFiscalId = ?', [notaFiscalId], (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows);
+            });
+          });
+          
+          numeroCargasFinal = await sugerirNumeroCargas(nota, itens);
+        }
+      }
+      
       // Desmembrar automaticamente
       cargasCriadas = await desmembrarNotaFiscal(
         notaFiscalId,
-        numeroCargas,
+        numeroCargasFinal,
         req.user.id,
         metodo || 'AUTOMATICO'
       );
@@ -274,6 +297,164 @@ router.post('/desmembrar', requireRole('LOGISTICA', 'ADMINISTRATIVO'), async (re
     res.status(500).json({
       success: false,
       message: error.message || 'Erro ao desmembrar nota fiscal'
+    });
+  }
+});
+
+/**
+ * POST /api/desmembramento/preview-automatico
+ * 
+ * Gera preview do desmembramento automático sem salvar no banco
+ */
+router.post('/preview-automatico', requireRole('LOGISTICA', 'ADMINISTRATIVO'), async (req, res) => {
+  try {
+    const { notaFiscalId, numeroCargas } = req.body;
+    
+    if (!notaFiscalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'notaFiscalId é obrigatório'
+      });
+    }
+    
+    const db = getDatabase();
+    
+    // Buscar nota fiscal
+    const nota = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM notas_fiscais WHERE id = ?', [notaFiscalId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+    
+    if (!nota) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nota fiscal não encontrada'
+      });
+    }
+    
+    // Buscar itens
+    const itens = await new Promise((resolve, reject) => {
+      db.all('SELECT * FROM nota_fiscal_itens WHERE notaFiscalId = ?', [notaFiscalId], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+    
+    // Calcular número de cargas se não foi especificado
+    let numeroCargasFinal = numeroCargas;
+    if (!numeroCargasFinal) {
+      numeroCargasFinal = await sugerirNumeroCargas(nota, itens);
+    }
+    
+    // Distribuir itens usando a lógica do serviço
+    const { distribuirItensEntreCargas } = require('../services/desmembramentoService');
+    const cargasPreview = await distribuirItensEntreCargas(itens, numeroCargasFinal);
+    
+    // Formatar cargas para o frontend
+    const cargasFormatadas = cargasPreview.map((carga, index) => ({
+      id: `preview-${index}`,
+      numeroCarga: `${nota.numeroNota}-C${String(index + 1).padStart(2, '0')}`,
+      itens: carga.itens.map((item, itemIndex) => ({
+        ...item,
+        idItem: item.id || item.notaFiscalItemId,
+        itemUniqueId: `${item.id || item.notaFiscalItemId}-${index}-${itemIndex}`
+      })),
+      pesoTotal: carga.pesoTotal,
+      volumeTotal: carga.volumeTotal,
+      valorTotal: carga.valorTotal
+    }));
+    
+    res.json({
+      success: true,
+      cargas: cargasFormatadas,
+      numeroCargas: numeroCargasFinal
+    });
+  } catch (error) {
+    logger.error('Erro ao gerar preview automático:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Erro ao gerar preview automático'
+    });
+  }
+});
+
+/**
+ * POST /api/desmembramento/preview-automatico
+ * 
+ * Gera preview do desmembramento automático sem salvar no banco
+ */
+router.post('/preview-automatico', requireRole('LOGISTICA', 'ADMINISTRATIVO'), async (req, res) => {
+  try {
+    const { notaFiscalId, numeroCargas } = req.body;
+    
+    if (!notaFiscalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'notaFiscalId é obrigatório'
+      });
+    }
+    
+    const db = getDatabase();
+    
+    // Buscar nota fiscal
+    const nota = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM notas_fiscais WHERE id = ?', [notaFiscalId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+    
+    if (!nota) {
+      return res.status(404).json({
+        success: false,
+        message: 'Nota fiscal não encontrada'
+      });
+    }
+    
+    // Buscar itens
+    const itens = await new Promise((resolve, reject) => {
+      db.all('SELECT * FROM nota_fiscal_itens WHERE notaFiscalId = ?', [notaFiscalId], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+    
+    // Calcular número de cargas se não foi especificado
+    let numeroCargasFinal = numeroCargas;
+    if (!numeroCargasFinal) {
+      numeroCargasFinal = await sugerirNumeroCargas(nota, itens);
+    }
+    
+    // Distribuir itens usando a lógica do serviço
+    const { distribuirItensEntreCargas } = require('../services/desmembramentoService');
+    const cargasPreview = await distribuirItensEntreCargas(itens, numeroCargasFinal);
+    
+    // Formatar cargas para o frontend
+    const cargasFormatadas = cargasPreview.map((carga, index) => ({
+      id: `preview-${index}`,
+      numeroCarga: `${nota.numeroNota}-C${String(index + 1).padStart(2, '0')}`,
+      itens: carga.itens.map((item, itemIndex) => ({
+        ...item,
+        idItem: item.id || item.notaFiscalItemId,
+        itemUniqueId: `${item.id || item.notaFiscalItemId}-${index}-${itemIndex}`
+      })),
+      pesoTotal: carga.pesoTotal,
+      volumeTotal: carga.volumeTotal,
+      valorTotal: carga.valorTotal
+    }));
+    
+    res.json({
+      success: true,
+      cargas: cargasFormatadas,
+      numeroCargas: numeroCargasFinal
+    });
+  } catch (error) {
+    logger.error('Erro ao gerar preview automático:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Erro ao gerar preview automático'
     });
   }
 });
