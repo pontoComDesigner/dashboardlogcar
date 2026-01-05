@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import './Configuracoes.css';
 
@@ -7,6 +7,12 @@ const Configuracoes = () => {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState(null);
   const [messageType, setMessageType] = useState('success');
+  const [historico, setHistorico] = useState([]);
+  const [estatisticas, setEstatisticas] = useState(null);
+  const [loadingHistorico, setLoadingHistorico] = useState(true);
+  const [filtroNota, setFiltroNota] = useState('');
+  const [filtroProduto, setFiltroProduto] = useState('');
+  const [paginacao, setPaginacao] = useState({ pagina: 1, limite: 50, total: 0, totalPaginas: 1 });
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -40,6 +46,20 @@ const Configuracoes = () => {
         try {
           const fileContent = e.target.result;
           
+          // Verificar se há token antes de enviar
+          const token = localStorage.getItem('token');
+          if (!token) {
+            setMessage('Você não está autenticado. Por favor, faça login novamente.');
+            setMessageType('error');
+            setUploading(false);
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 2000);
+            return;
+          }
+          
+          console.log('🔐 Enviando request com token:', token ? 'Token presente' : 'Token ausente');
+          
           const response = await api.post('/configuracoes/upload-historico', {
             fileContent,
             fileName: file.name
@@ -51,17 +71,34 @@ const Configuracoes = () => {
             setFile(null);
             // Resetar input de arquivo
             document.getElementById('csv-file-input').value = '';
+            // Recarregar histórico após importação
+            loadHistorico();
+            loadEstatisticas();
           } else {
             setMessage(response.data.message || 'Erro ao importar histórico.');
             setMessageType('error');
           }
         } catch (error) {
           console.error('Erro ao fazer upload:', error);
-          setMessage(
-            error.response?.data?.message || 
-            'Erro ao importar histórico. Verifique o formato do arquivo CSV.'
-          );
-          setMessageType('error');
+          console.error('Status:', error.response?.status);
+          console.error('Data:', error.response?.data);
+          
+          if (error.response?.status === 401) {
+            setMessage('Sua sessão expirou. Por favor, faça login novamente.');
+            setMessageType('error');
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 2000);
+          } else if (error.response?.status === 403) {
+            setMessage('Acesso negado. Você não tem permissão para importar histórico.');
+            setMessageType('error');
+          } else {
+            setMessage(
+              error.response?.data?.message || 
+              'Erro ao importar histórico. Verifique o formato do arquivo CSV.'
+            );
+            setMessageType('error');
+          }
         } finally {
           setUploading(false);
         }
@@ -80,6 +117,54 @@ const Configuracoes = () => {
       setMessageType('error');
       setUploading(false);
     }
+  };
+
+  const loadHistorico = async () => {
+    try {
+      setLoadingHistorico(true);
+      const response = await api.get('/configuracoes/historico', {
+        params: {
+          page: paginacao.pagina,
+          limit: paginacao.limite,
+          numeroNotaFiscal: filtroNota || undefined,
+          codigoProduto: filtroProduto || undefined
+        }
+      });
+      
+      if (response.data.success) {
+        setHistorico(response.data.historico);
+        setPaginacao(response.data.paginacao);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar histórico:', error);
+    } finally {
+      setLoadingHistorico(false);
+    }
+  };
+
+  const loadEstatisticas = async () => {
+    try {
+      const response = await api.get('/configuracoes/historico/estatisticas');
+      if (response.data.success) {
+        setEstatisticas(response.data.estatisticas);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadHistorico();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paginacao.pagina, filtroNota, filtroProduto]);
+
+  useEffect(() => {
+    loadEstatisticas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFiltroChange = () => {
+    setPaginacao({ ...paginacao, pagina: 1 });
   };
 
   return (
@@ -192,6 +277,126 @@ const Configuracoes = () => {
               </ul>
               <p><strong>Total: 5 + 3 = 8 cargas</strong> (com histórico) ou <strong>5 + 1 = 6 cargas</strong> (sem histórico)</p>
             </div>
+          </div>
+        </div>
+
+        <div className="config-card">
+          <div className="config-card-header">
+            <h2>📊 Histórico de Desmembramentos Importados</h2>
+            <p>Visualize as notas fiscais e produtos que foram importados para o histórico.</p>
+          </div>
+
+          <div className="config-card-body">
+            {estatisticas && (
+              <div className="stats-box">
+                <div className="stat-item">
+                  <span className="stat-label">Total de Notas Fiscais:</span>
+                  <span className="stat-value">{estatisticas.totalNotasFiscais}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Total de Produtos:</span>
+                  <span className="stat-value">{estatisticas.totalProdutos}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Total de Registros:</span>
+                  <span className="stat-value">{estatisticas.totalRegistros}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="filtros-box">
+              <div className="filtro-item">
+                <label>Filtrar por Nota Fiscal:</label>
+                <input
+                  type="text"
+                  value={filtroNota}
+                  onChange={(e) => setFiltroNota(e.target.value)}
+                  onBlur={handleFiltroChange}
+                  placeholder="Ex: NF-123456"
+                  className="filtro-input"
+                />
+              </div>
+              <div className="filtro-item">
+                <label>Filtrar por Código do Produto:</label>
+                <input
+                  type="text"
+                  value={filtroProduto}
+                  onChange={(e) => setFiltroProduto(e.target.value)}
+                  onBlur={handleFiltroChange}
+                  placeholder="Ex: 6000"
+                  className="filtro-input"
+                />
+              </div>
+            </div>
+
+            {loadingHistorico ? (
+              <div className="loading-box">Carregando histórico...</div>
+            ) : historico.length === 0 ? (
+              <div className="empty-box">
+                <p>Nenhum histórico encontrado. Importe um arquivo CSV para começar.</p>
+              </div>
+            ) : (
+              <>
+                <div className="table-container">
+                  <table className="historico-table">
+                    <thead>
+                      <tr>
+                        <th>Nota Fiscal</th>
+                        <th>Código Produto</th>
+                        <th>Descrição</th>
+                        <th>Unidade</th>
+                        <th>Quantidade Total</th>
+                        <th>Quantidade por Carga</th>
+                        <th>Cargas Necessárias</th>
+                        <th>Frequência</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historico.map((item, index) => (
+                        <tr key={index}>
+                          <td>{item.numeroNotaFiscal}</td>
+                          <td><strong>{item.codigoProduto}</strong></td>
+                          <td>{item.descricaoProduto || '-'}</td>
+                          <td>{item.unidade || '-'}</td>
+                          <td>{item.quantidadeTotal}</td>
+                          <td>{item.quantidadePorCarga}</td>
+                          <td>
+                            {item.quantidadePorCarga > 0 
+                              ? Math.ceil(item.quantidadeTotal / item.quantidadePorCarga)
+                              : '-'
+                            }
+                          </td>
+                          <td>{item.frequencia}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {paginacao.totalPaginas > 1 && (
+                  <div className="paginacao-box">
+                    <button
+                      onClick={() => setPaginacao({ ...paginacao, pagina: paginacao.pagina - 1 })}
+                      disabled={paginacao.pagina === 1}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      ← Anterior
+                    </button>
+                    <span>
+                      Página {paginacao.pagina} de {paginacao.totalPaginas} 
+                      ({paginacao.total} registros)
+                    </span>
+                    <button
+                      onClick={() => setPaginacao({ ...paginacao, pagina: paginacao.pagina + 1 })}
+                      disabled={paginacao.pagina >= paginacao.totalPaginas}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Próxima →
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>

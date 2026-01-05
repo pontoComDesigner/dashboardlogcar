@@ -6,12 +6,16 @@
 
 const express = require('express');
 const router = express.Router();
-const { requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const { importarHistorico } = require('../scripts/importarHistoricoFaturamentos');
+const { getDatabase } = require('../database/init');
 const { logger } = require('../utils/logger');
 const { registrarAcao } = require('../services/auditoriaService');
 
-// Todas as rotas requerem autenticação e papel ADMINISTRATIVO
+// Todas as rotas requerem autenticação primeiro
+router.use(authenticateToken);
+
+// Todas as rotas requerem papel ADMINISTRATIVO (após autenticação)
 router.use(requireRole('ADMINISTRATIVO'));
 
 /**
@@ -21,6 +25,9 @@ router.use(requireRole('ADMINISTRATIVO'));
  */
 router.post('/upload-historico', async (req, res) => {
   try {
+    // Log para debug
+    logger.info(`Upload histórico - User: ${req.user?.username || 'N/A'}, Role: ${req.user?.role || 'N/A'}`);
+    
     // Verificar se há arquivo no body (enviado como FormData)
     if (!req.body || !req.body.fileContent) {
       return res.status(400).json({
@@ -77,6 +84,150 @@ router.post('/upload-historico', async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Erro ao importar histórico'
+    });
+  }
+});
+
+/**
+ * GET /api/configuracoes/historico
+ * 
+ * Lista histórico de desmembramentos importados
+ */
+router.get('/historico', (req, res) => {
+  // Log para debug
+  logger.info(`Listar histórico - User: ${req.user?.username || 'N/A'}, Role: ${req.user?.role || 'N/A'}`);
+  try {
+    const db = getDatabase();
+    const { page = 1, limit = 50, numeroNotaFiscal, codigoProduto } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    let query = `
+      SELECT 
+        numeroNotaFiscal,
+        codigoProduto,
+        descricaoProduto,
+        unidade,
+        quantidadeTotal,
+        quantidadePorCarga,
+        numeroCarga,
+        COUNT(*) as frequencia
+      FROM historico_desmembramentos_reais
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (numeroNotaFiscal) {
+      query += ' AND numeroNotaFiscal LIKE ?';
+      params.push(`%${numeroNotaFiscal}%`);
+    }
+    
+    if (codigoProduto) {
+      query += ' AND codigoProduto = ?';
+      params.push(codigoProduto);
+    }
+    
+    query += ' GROUP BY numeroNotaFiscal, codigoProduto, quantidadeTotal, quantidadePorCarga';
+    query += ' ORDER BY numeroNotaFiscal DESC, codigoProduto ASC';
+    query += ' LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), offset);
+    
+    // Buscar total de registros
+    let countQuery = `
+      SELECT COUNT(DISTINCT numeroNotaFiscal || codigoProduto || quantidadeTotal || quantidadePorCarga) as total
+      FROM historico_desmembramentos_reais
+      WHERE 1=1
+    `;
+    const countParams = [];
+    
+    if (numeroNotaFiscal) {
+      countQuery += ' AND numeroNotaFiscal LIKE ?';
+      countParams.push(`%${numeroNotaFiscal}%`);
+    }
+    
+    if (codigoProduto) {
+      countQuery += ' AND codigoProduto = ?';
+      countParams.push(codigoProduto);
+    }
+    
+    db.get(countQuery, countParams, (err, countRow) => {
+      if (err) {
+        logger.error('Erro ao contar histórico:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar histórico'
+        });
+      }
+      
+      db.all(query, params, (err, rows) => {
+        if (err) {
+          logger.error('Erro ao buscar histórico:', err);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar histórico'
+          });
+        }
+        
+        res.json({
+          success: true,
+          historico: rows || [],
+          paginacao: {
+            pagina: parseInt(page),
+            limite: parseInt(limit),
+            total: countRow?.total || 0,
+            totalPaginas: Math.ceil((countRow?.total || 0) / parseInt(limit))
+          }
+        });
+      });
+    });
+  } catch (error) {
+    logger.error('Erro ao listar histórico:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
+    });
+  }
+});
+
+/**
+ * GET /api/configuracoes/historico/estatisticas
+ * 
+ * Retorna estatísticas do histórico importado
+ */
+router.get('/historico/estatisticas', (req, res) => {
+  // Log para debug
+  logger.info(`Estatísticas histórico - User: ${req.user?.username || 'N/A'}, Role: ${req.user?.role || 'N/A'}`);
+  try {
+    const db = getDatabase();
+    
+    db.all(`
+      SELECT 
+        COUNT(DISTINCT numeroNotaFiscal) as totalNotasFiscais,
+        COUNT(DISTINCT codigoProduto) as totalProdutos,
+        COUNT(*) as totalRegistros
+      FROM historico_desmembramentos_reais
+    `, [], (err, stats) => {
+      if (err) {
+        logger.error('Erro ao buscar estatísticas:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar estatísticas'
+        });
+      }
+      
+      res.json({
+        success: true,
+        estatisticas: stats[0] || {
+          totalNotasFiscais: 0,
+          totalProdutos: 0,
+          totalRegistros: 0
+        }
+      });
+    });
+  } catch (error) {
+    logger.error('Erro ao buscar estatísticas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao processar requisição'
     });
   }
 });

@@ -9,11 +9,12 @@ const { logger } = require('../utils/logger');
  * Middleware para verificar token JWT
  */
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
   
   if (!token) {
     logger.warn(`❌ Token não fornecido: ${req.method} ${req.path} - IP: ${req.ip}`);
+    logger.warn(`Headers recebidos: ${JSON.stringify(Object.keys(req.headers))}`);
     return res.status(401).json({
       success: false,
       message: 'Token de autenticação não fornecido'
@@ -31,6 +32,7 @@ function authenticateToken(req, res, next) {
     
     // Adicionar informações do usuário à requisição
     req.user = decoded;
+    logger.info(`✅ Usuário autenticado: ${req.user.username} (${req.user.role}) - ${req.method} ${req.path}`);
     next();
   });
 }
