@@ -29,3 +29,67 @@ services:
 
 
 
+
+# Este arquivo pode ser usado para definir serviços via código (Infrastructure as Code)
+
+services:
+  - type: web
+    name: dashboardlogcar
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # IMPORTANTE: Configure as variáveis abaixo no painel do Render
+      # JWT_SECRET, ERP_API_KEY, ALLOWED_ORIGINS, DB_PATH, REACT_APP_API_URL
+      # Não coloque valores sensíveis neste arquivo se for commitado no Git!
+
+# Nota: É recomendado configurar variáveis de ambiente diretamente no painel do Render
+# para maior segurança, especialmente JWT_SECRET e ERP_API_KEY
+
+
+
+
+
+
+
+
+
+
+# Este arquivo pode ser usado para definir serviços via código (Infrastructure as Code)
+
+services:
+  - type: web
+    name: dashboardlogcar
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # IMPORTANTE: Configure as variáveis abaixo no painel do Render
+      # JWT_SECRET, ERP_API_KEY, ALLOWED_ORIGINS, DB_PATH, REACT_APP_API_URL
+      # Não coloque valores sensíveis neste arquivo se for commitado no Git!
+
+# Nota: É recomendado configurar variáveis de ambiente diretamente no painel do Render
+# para maior segurança, especialmente JWT_SECRET e ERP_API_KEY
+
+
+
+
+
+
+
+
+
+
+

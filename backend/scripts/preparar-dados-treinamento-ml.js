@@ -12,6 +12,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const { initDatabase, getDatabase } = require('../database/init');
 
 // Importar serviço de feature engineering
 const featureEngineeringService = require('../services/mlFeatureEngineeringService');
@@ -24,19 +25,45 @@ if (!fs.existsSync(DB_PATH)) {
   process.exit(1);
 }
 
-const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) {
-    console.error('❌ Erro ao conectar ao banco:', err);
+// Inicializar banco e processar
+(async () => {
+  try {
+    console.log('🔄 Inicializando banco de dados...');
+    await initDatabase();
+    console.log('✅ Conectado ao banco de dados\n');
+    
+    const db = getDatabase();
+    await processarDados(db);
+    db.close();
+  } catch (error) {
+    console.error('❌ Erro:', error);
     process.exit(1);
   }
-  
-  console.log('✅ Conectado ao banco de dados');
-  processarDados();
-});
+})();
 
-async function processarDados() {
+async function processarDados(db) {
   try {
     console.log('\n📊 Iniciando preparação de dados de treinamento...\n');
+    
+    // Verificar se tabela existe
+    const tabelaExiste = await new Promise((resolve) => {
+      db.get(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='historico_desmembramentos_reais'",
+        [],
+        (err, row) => {
+          resolve(!!row);
+        }
+      );
+    });
+    
+    if (!tabelaExiste) {
+      console.log('❌ Tabela historico_desmembramentos_reais não encontrada!');
+      console.log('\n📋 Você precisa primeiro importar o histórico de faturamentos.');
+      console.log('   Execute: npm run importar-historico <arquivo.csv>');
+      console.log('   Exemplo: npm run importar-historico csv.csv\n');
+      db.close();
+      return;
+    }
     
     // 1. Buscar todas as notas fiscais únicas do histórico
     const notasFiscais = await new Promise((resolve, reject) => {
@@ -57,7 +84,6 @@ async function processarDados() {
     if (notasFiscais.length === 0) {
       console.log('⚠️  Nenhuma nota fiscal encontrada no histórico.');
       console.log('   Importe dados históricos primeiro usando: npm run importar-historico');
-      db.close();
       return;
     }
     
@@ -238,12 +264,8 @@ async function processarDados() {
     }
     
     console.log('\n✅ Preparação concluída!\n');
-    
-    db.close();
   } catch (error) {
     console.error('❌ Erro ao processar dados:', error);
-    db.close();
-    process.exit(1);
+    throw error;
   }
 }
-

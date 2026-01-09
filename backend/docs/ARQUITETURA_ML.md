@@ -621,3 +621,4 @@ Para este caso, recomendo:
 5. **Testes A/B** para comparar performance
 6. **Monitoramento contínuo** de métricas em produção
 
+
