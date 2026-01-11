@@ -8,24 +8,24 @@ const VisualizarCargasNF = ({ notaFiscalId, onClose }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Buscar nota fiscal
+        const notaResponse = await api.get(`/desmembramento/nota/${notaFiscalId}`);
+        setNotaFiscal(notaResponse.data.notaFiscal);
+
+        // Buscar cargas
+        const cargasResponse = await api.get(`/desmembramento/cargas/${notaFiscalId}`);
+        setCargas(cargasResponse.data.cargas || []);
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadData();
   }, [notaFiscalId]);
-
-  const loadData = async () => {
-    try {
-      // Buscar nota fiscal
-      const notaResponse = await api.get(`/desmembramento/nota/${notaFiscalId}`);
-      setNotaFiscal(notaResponse.data.notaFiscal);
-
-      // Buscar cargas
-      const cargasResponse = await api.get(`/desmembramento/cargas/${notaFiscalId}`);
-      setCargas(cargasResponse.data.cargas || []);
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (

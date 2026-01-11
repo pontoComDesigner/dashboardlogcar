@@ -433,6 +433,53 @@ async function desmembrarNotaFiscalManual(notaFiscalId, distribuicaoCargas, user
   });
 }
 
+/**
+ * Valida se o desmembramento está correto
+ */
+async function validarDesmembramento(notaFiscalId) {
+  const db = getDatabase();
+  
+  return new Promise((resolve, reject) => {
+    // Buscar totais da nota fiscal
+    db.get(`
+      SELECT 
+        COALESCE(SUM(valorTotal), 0) as valorTotal,
+        COALESCE(SUM(quantidade), 0) as quantidadeTotal
+      FROM nota_fiscal_itens
+      WHERE notaFiscalId = ?
+    `, [notaFiscalId], (err, notaTotais) => {
+      if (err) return reject(err);
+      
+      // Buscar totais das cargas
+      db.get(`
+        SELECT 
+          COALESCE(SUM(valorTotal), 0) as valorTotal,
+          COUNT(DISTINCT id) as quantidadeCargas
+        FROM cargas
+        WHERE notaFiscalId = ?
+      `, [notaFiscalId], (err, cargasTotais) => {
+        if (err) return reject(err);
+        
+        // Verificar se totais batem
+        const valorDivergencia = Math.abs(notaTotais.valorTotal - cargasTotais.valorTotal);
+        const porcentagemDivergencia = notaTotais.valorTotal > 0 
+          ? (valorDivergencia / notaTotais.valorTotal) * 100 
+          : 0;
+        
+        const valido = porcentagemDivergencia < 0.01; // Tolerância de 0.01%
+        
+        resolve({
+          valido,
+          valorDivergencia,
+          porcentagemDivergencia,
+          notaFiscal: notaTotais,
+          cargas: cargasTotais
+        });
+      });
+    });
+  });
+}
+
 module.exports = {
   sugerirNumeroCargas,
   calcularNumeroCargasHeuristico,
