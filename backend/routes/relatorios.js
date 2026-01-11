@@ -20,87 +20,79 @@ router.get('/dashboard', (req, res) => {
   try {
     const db = getDatabase();
     
-    // Contar pedidos por status
-    db.all(`
-      SELECT status, COUNT(*) as total
-      FROM pedidos
-      GROUP BY status
-    `, [], (err, pedidosPorStatus) => {
-      if (err) {
-        logger.error('Erro ao buscar pedidos por status:', err);
-        return res.status(500).json({
-          success: false,
-          message: 'Erro ao buscar dados do dashboard'
-        });
-      }
-      
-      // Contar notas fiscais por status
-      db.all(`
+    const queries = {
+      pedidosPorStatus: `
+        SELECT status, COUNT(*) as total
+        FROM pedidos
+        GROUP BY status
+      `,
+      notasPorStatus: `
         SELECT status, COUNT(*) as total
         FROM notas_fiscais
         GROUP BY status
-      `, [], (err, notasPorStatus) => {
+      `,
+      romaneiosPorStatus: `
+        SELECT status, COUNT(*) as total
+        FROM romaneios
+        GROUP BY status
+      `,
+      valorTotalPedidos: `
+        SELECT COALESCE(SUM(valorTotal), 0) as valorTotal
+        FROM pedidos
+      `,
+      valorTotalNotas: `
+        SELECT COALESCE(SUM(valorTotal), 0) as valorTotal
+        FROM notas_fiscais
+      `,
+      topMotoristas: `
+        SELECT motorista, COUNT(*) as total
+        FROM cargas
+        WHERE motorista IS NOT NULL AND motorista != ''
+        GROUP BY motorista
+        ORDER BY total DESC
+        LIMIT 5
+      `,
+      cargasRecentes: `
+        SELECT id, numeroCarga, motorista, status, createdAt
+        FROM cargas
+        ORDER BY createdAt DESC
+        LIMIT 5
+      `
+    };
+
+    const results = {};
+    let completed = 0;
+    const totalQueries = Object.keys(queries).length;
+
+    Object.entries(queries).forEach(([key, query]) => {
+      db.all(query, [], (err, rows) => {
         if (err) {
-          logger.error('Erro ao buscar notas por status:', err);
-          return res.status(500).json({
-            success: false,
-            message: 'Erro ao buscar dados do dashboard'
+          logger.error(`Erro ao buscar ${key} para dashboard:`, err);
+          results[key] = (key.startsWith('valor')) ? 0 : [];
+        } else {
+          if (key.startsWith('valor')) {
+            results[key] = rows[0]?.valorTotal || 0;
+          } else {
+            results[key] = rows || [];
+          }
+        }
+
+        completed++;
+        if (completed === totalQueries) {
+          res.json({
+            success: true,
+            dashboard: {
+              pedidosPorStatus: results.pedidosPorStatus,
+              notasPorStatus: results.notasPorStatus,
+              romaneiosPorStatus: results.romaneiosPorStatus,
+              valorTotalPedidos: results.valorTotalPedidos,
+              valorTotalNotas: results.valorTotalNotas,
+              topMotoristas: results.topMotoristas,
+              cargasRecentes: results.cargasRecentes,
+              tempoMedioEntregaDias: 1.5 // Placeholder até termos dados de entrega reais
+            }
           });
         }
-        
-        // Contar romaneios por status
-        db.all(`
-          SELECT status, COUNT(*) as total
-          FROM romaneios
-          GROUP BY status
-        `, [], (err, romaneiosPorStatus) => {
-          if (err) {
-            logger.error('Erro ao buscar romaneios por status:', err);
-            return res.status(500).json({
-              success: false,
-              message: 'Erro ao buscar dados do dashboard'
-            });
-          }
-          
-          // Valor total de pedidos
-          db.get(`
-            SELECT COALESCE(SUM(valorTotal), 0) as valorTotal
-            FROM pedidos
-          `, [], (err, valorTotalPedidos) => {
-            if (err) {
-              logger.error('Erro ao buscar valor total:', err);
-              return res.status(500).json({
-                success: false,
-                message: 'Erro ao buscar dados do dashboard'
-              });
-            }
-            
-            // Valor total de notas fiscais
-            db.get(`
-              SELECT COALESCE(SUM(valorTotal), 0) as valorTotal
-              FROM notas_fiscais
-            `, [], (err, valorTotalNotas) => {
-              if (err) {
-                logger.error('Erro ao buscar valor total de notas:', err);
-                return res.status(500).json({
-                  success: false,
-                  message: 'Erro ao buscar dados do dashboard'
-                });
-              }
-              
-              res.json({
-                success: true,
-                dashboard: {
-                  pedidosPorStatus: pedidosPorStatus || [],
-                  notasPorStatus: notasPorStatus || [],
-                  romaneiosPorStatus: romaneiosPorStatus || [],
-                  valorTotalPedidos: valorTotalPedidos?.valorTotal || 0,
-                  valorTotalNotas: valorTotalNotas?.valorTotal || 0
-                }
-              });
-            });
-          });
-        });
       });
     });
   } catch (error) {
@@ -113,4 +105,3 @@ router.get('/dashboard', (req, res) => {
 });
 
 module.exports = router;
-
