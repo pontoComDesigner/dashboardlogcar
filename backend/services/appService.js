@@ -88,7 +88,8 @@ function formatarRomaneioParaApp(romaneio, pedidos) {
       clienteEstado: pedido.clienteEstado,
       clienteCep: pedido.clienteCep,
       valorTotal: pedido.valorTotal,
-      observacoes: pedido.observacoes,
+      observacoes: pedido.observacoes || pedido.notes,
+      notes: pedido.notes || pedido.observacoes,
       status: pedido.pedidoStatus || pedido.status,
       ordem: pedido.ordem
     }))
@@ -198,7 +199,8 @@ function formatarRomaneioParaApp(romaneio, pedidos) {
       clienteEstado: pedido.clienteEstado,
       clienteCep: pedido.clienteCep,
       valorTotal: pedido.valorTotal,
-      observacoes: pedido.observacoes,
+      observacoes: pedido.observacoes || pedido.notes,
+      notes: pedido.notes || pedido.observacoes,
       status: pedido.pedidoStatus || pedido.status,
       ordem: pedido.ordem
     }))
@@ -308,7 +310,8 @@ function formatarRomaneioParaApp(romaneio, pedidos) {
       clienteEstado: pedido.clienteEstado,
       clienteCep: pedido.clienteCep,
       valorTotal: pedido.valorTotal,
-      observacoes: pedido.observacoes,
+      observacoes: pedido.observacoes || pedido.notes,
+      notes: pedido.notes || pedido.observacoes,
       status: pedido.pedidoStatus || pedido.status,
       ordem: pedido.ordem
     }))
