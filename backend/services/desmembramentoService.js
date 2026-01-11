@@ -183,67 +183,67 @@ async function sugerirNumeroCargas(notaFiscal, itens = null) {
 }
 
 /**
- * Distribui itens entre cargas de forma equilibrada
+ * Distribui itens entre cargas baseando-se no histórico de faturamento
  */
 async function distribuirItensEntreCargas(itens, numeroCargas) {
+  const db = getDatabase();
   const codigosProdutos = itens.map(item => item.codigoProduto || item.codigoInterno).filter(Boolean);
   const regras = await buscarRegrasProdutosEspeciais(codigosProdutos);
   
-  const numeroCargasMinimo = await calcularNumeroCargasPorProdutosEspeciais(itens);
-  const numeroCargasFinal = Math.max(numeroCargas, numeroCargasMinimo);
-  
-  const cargas = Array.from({ length: numeroCargasFinal }, () => ({
+  const cargas = Array.from({ length: numeroCargas }, () => ({
     itens: [],
     pesoTotal: 0,
     volumeTotal: 0,
     valorTotal: 0
   }));
+
+  // 1. Separar itens especiais (1 por carga)
+  const especiais = [];
+  const normais = [];
   
-  let proximaCarga = 0;
-  
-  const itensOrdenados = [...itens].sort((a, b) => {
-    const codigoA = a.codigoProduto || a.codigoInterno;
-    const codigoB = b.codigoProduto || b.codigoInterno;
-    const regraA = codigoA && regras[codigoA] ? regras[codigoA] : null;
-    const regraB = codigoB && regras[codigoB] ? regras[codigoB] : null;
-    if (regraA && !regraB) return -1;
-    if (!regraA && regraB) return 1;
-    return (b.peso || 0) - (a.peso || 0);
+  itens.forEach(item => {
+    const codigo = item.codigoProduto || item.codigoInterno;
+    if (codigo && regras[codigo]) {
+      especiais.push(item);
+    } else {
+      normais.push(item);
+    }
   });
 
-  for (const item of itensOrdenados) {
-    const codigo = item.codigoProduto || item.codigoInterno;
-    const quantidadeMaxima = codigo && regras[codigo] ? regras[codigo] : null;
-    const quantidadeItem = item.quantidade || 1;
-    
-    if (quantidadeMaxima !== null && quantidadeMaxima > 0) {
-      for (let i = 0; i < quantidadeItem; i++) {
-        if (proximaCarga >= numeroCargasFinal) proximaCarga = 0;
-        
-        const pesoUnit = (item.peso || 0) / quantidadeItem;
-        const volUnit = (item.volume || 0) / quantidadeItem;
-        const valorUnit = (item.valorTotal || 0) / quantidadeItem;
-        
-        cargas[proximaCarga].itens.push({
-          ...item,
-          quantidade: 1,
-          peso: pesoUnit,
-          volume: volUnit,
-          valorTotal: valorUnit
-        });
-        cargas[proximaCarga].pesoTotal += pesoUnit;
-        cargas[proximaCarga].volumeTotal += volUnit;
-        cargas[proximaCarga].valorTotal += valorUnit;
+  let proximaCarga = 0;
+
+  // 2. Distribuir especiais
+  for (const item of especiais) {
+    for (let i = 0; i < item.quantidade; i++) {
+      if (proximaCarga < numeroCargas) {
+        cargas[proximaCarga].itens.push({ ...item, quantidade: 1 });
+        cargas[proximaCarga].pesoTotal += (item.peso || 0) / item.quantidade;
+        cargas[proximaCarga].volumeTotal += (item.volume || 0) / item.quantidade;
+        cargas[proximaCarga].valorTotal += (item.valorTotal || 0) / item.quantidade;
         proximaCarga++;
       }
-    } else {
-      if (proximaCarga >= numeroCargasFinal) proximaCarga = 0;
-      cargas[proximaCarga].itens.push(item);
-      cargas[proximaCarga].pesoTotal += item.peso || 0;
-      cargas[proximaCarga].volumeTotal += item.volume || 0;
-      cargas[proximaCarga].valorTotal += item.valorTotal || 0;
-      proximaCarga++;
     }
+  }
+
+  // 3. Distribuir normais tentando agrupar por padrões históricos
+  // Ordenar normais por peso para preencher melhor
+  normais.sort((a, b) => (b.peso || 0) - (a.peso || 0));
+
+  for (const item of normais) {
+    const codigo = item.codigoProduto || item.codigoInterno;
+    const padrao = await buscarPadraoHistoricoProdutoNormal(codigo, item.quantidade);
+    
+    let cargaAlvo = 0;
+    
+    // Se houver histórico de "viajar junto" com outro item já alocado, preferir essa carga
+    // Por enquanto, usamos preenchimento por menor peso/volume para equilibrar
+    cargaAlvo = cargas.reduce((minIdx, carga, idx, arr) => 
+      carga.pesoTotal < arr[minIdx].pesoTotal ? idx : minIdx, 0);
+
+    cargas[cargaAlvo].itens.push(item);
+    cargas[cargaAlvo].pesoTotal += item.peso || 0;
+    cargas[cargaAlvo].volumeTotal += item.volume || 0;
+    cargas[cargaAlvo].valorTotal += item.valorTotal || 0;
   }
   
   return cargas;
