@@ -1,5 +1,5 @@
 /**
- * Middleware de autenticação JWT
+ * Middleware de autenticação JWT e API Key
  */
 
 const jwt = require('jsonwebtoken');
@@ -14,7 +14,6 @@ function authenticateToken(req, res, next) {
   
   if (!token) {
     logger.warn(`❌ Token não fornecido: ${req.method} ${req.path} - IP: ${req.ip}`);
-    logger.warn(`Headers recebidos: ${JSON.stringify(Object.keys(req.headers))}`);
     return res.status(401).json({
       success: false,
       message: 'Token de autenticação não fornecido'
@@ -63,6 +62,24 @@ function requireRole(...allowedRoles) {
 }
 
 /**
+ * Middleware para validar API Key do ERP
+ */
+function apiKeyMiddleware(req, res, next) {
+  const apiKey = req.headers['x-api-key'];
+  const validApiKey = process.env.ERP_API_KEY || 'default-erp-api-key';
+  
+  if (!apiKey || apiKey !== validApiKey) {
+    logger.warn(`❌ API Key inválida ou ausente: ${req.method} ${req.path} - IP: ${req.ip}`);
+    return res.status(401).json({
+      success: false,
+      message: 'API Key inválida ou ausente'
+    });
+  }
+  
+  next();
+}
+
+/**
  * Middleware opcional - verifica token se fornecido, mas não bloqueia
  */
 function optionalAuth(req, res, next) {
@@ -83,5 +100,6 @@ function optionalAuth(req, res, next) {
 module.exports = {
   authenticateToken,
   requireRole,
+  apiKeyMiddleware,
   optionalAuth
 };

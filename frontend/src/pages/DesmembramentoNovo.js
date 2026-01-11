@@ -13,36 +13,31 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
   const [alert, setAlert] = useState(null);
   const [itemEditando, setItemEditando] = useState(null);
   const [quantidadeEditando, setQuantidadeEditando] = useState('');
-  const [itensDisponiveis, setItensDisponiveis] = useState([]);
 
   useEffect(() => {
-    loadNotaFiscal();
-  }, [notaFiscalId]);
+    const loadNotaFiscal = async () => {
+      try {
+        const response = await api.get(`/desmembramento/nota/${notaFiscalId}`);
+        const nota = response.data.notaFiscal;
+        setNotaFiscal(nota);
+        
+        if (nota.cargas && nota.cargas.length > 0) {
+          // Já foi desmembrada - carregar cargas existentes
+          loadCargas(notaFiscalId);
+        } else {
+          // Carregar sugestão
+          loadSugestao();
+        }
+      } catch (error) {
+        showAlert('Erro ao carregar nota fiscal', 'error');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const loadNotaFiscal = async () => {
-    try {
-      const response = await api.get(`/desmembramento/nota/${notaFiscalId}`);
-      const nota = response.data.notaFiscal;
-      setNotaFiscal(nota);
-      
-      // Inicializar itens disponíveis com todos os itens da NF
-      if (nota.itens) {
-        setItensDisponiveis(nota.itens.map(item => ({ ...item, idItem: item.id })));
-      }
-      
-      if (nota.cargas && nota.cargas.length > 0) {
-        // Já foi desmembrada - carregar cargas existentes
-        loadCargas(notaFiscalId);
-      } else {
-        // Carregar sugestão
-        loadSugestao();
-      }
-    } catch (error) {
-      showAlert('Erro ao carregar nota fiscal', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+    loadNotaFiscal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notaFiscalId]);
 
   const loadCargas = async (id) => {
     try {
@@ -126,8 +121,6 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
     }
 
     // Reinicializar itens disponíveis
-    setItensDisponiveis(notaFiscal.itens.map(item => ({ ...item, idItem: item.id })));
-
     setCargas(cargasVazias);
     setModo('manual');
   };
@@ -395,9 +388,6 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
   };
 
   const removerCarga = (cargaId) => {
-    // Contar cargas com itens
-    const cargasComItens = cargas.filter(c => c.itens && c.itens.length > 0);
-    
     const carga = cargas.find(c => c.id === cargaId);
     
     // Se a carga tem itens, não permitir remover (precisa remover itens primeiro)
@@ -530,10 +520,8 @@ const DesmembramentoNovo = ({ notaFiscalId, onClose, onComplete }) => {
   }
 
   // Calcular totais apenas das cargas com itens
-  const cargasComItens = cargas.filter(c => c.itens && c.itens.length > 0);
-  const totalValor = cargasComItens.reduce((sum, c) => sum + c.valorTotal, 0);
-  const totalPeso = cargasComItens.reduce((sum, c) => sum + c.pesoTotal, 0);
-  const totalVolume = cargasComItens.reduce((sum, c) => sum + c.volumeTotal, 0);
+  const cargasComItensCalculo = cargas.filter(c => c.itens && c.itens.length > 0);
+  const totalValor = cargasComItensCalculo.reduce((sum, c) => sum + c.valorTotal, 0);
 
   return (
     <div className="desmembramento-novo-container">

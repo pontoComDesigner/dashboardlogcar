@@ -7,7 +7,6 @@ const Configuracoes = () => {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState(null);
   const [messageType, setMessageType] = useState('success');
-  const [historico, setHistorico] = useState([]);
   const [cargas, setCargas] = useState([]);
   const [estatisticas, setEstatisticas] = useState(null);
   const [loadingHistorico, setLoadingHistorico] = useState(true);
