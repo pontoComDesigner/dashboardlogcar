@@ -20,6 +20,7 @@ const Pedidos = () => {
 
   useEffect(() => {
     loadPedidos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -68,16 +69,12 @@ const Pedidos = () => {
 
   useEffect(() => {
     aplicarFiltros(pedidos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroData, filtroBusca]);
 
   const showAlert = (message, type = 'success') => {
     setAlert({ message, type });
     setTimeout(() => setAlert(null), 5000);
-  };
-
-  const handleCreate = () => {
-    setEditingPedido(null);
-    setShowModal(true);
   };
 
   const handleEdit = async (id, tipo) => {
@@ -93,20 +90,6 @@ const Pedidos = () => {
       } catch (error) {
         showAlert('Erro ao carregar pedido', 'error');
       }
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Tem certeza que deseja excluir este pedido?')) {
-      return;
-    }
-
-    try {
-      await api.delete(`/pedidos/${id}`);
-      showAlert('Pedido excluído com sucesso');
-      loadPedidos();
-    } catch (error) {
-      showAlert('Erro ao excluir pedido', 'error');
     }
   };
 

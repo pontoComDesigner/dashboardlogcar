@@ -17,6 +17,7 @@ const Desmembramento = () => {
 
   useEffect(() => {
     loadNotasPendentes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

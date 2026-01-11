@@ -21,6 +21,7 @@ const Romaneios = () => {
 
   useEffect(() => {
     loadRomaneios();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
