@@ -160,93 +160,122 @@ function calcularNumeroCargasHeuristico(notaFiscal) {
 }
 
 /**
- * Sugere número de cargas baseado em histórico e produtos da NF
+ * Sugere número de cargas baseado em kits identificados no histórico
  */
 async function sugerirNumeroCargas(notaFiscal, itens = null) {
   try {
-    try {
-      const mlService = require('./mlService');
-      const predicao = await mlService.fazerPredicao(notaFiscal, itens || []);
-      if (predicao.numeroCargasSugerido !== null && predicao.confianca >= 0.6) {
-        return predicao.numeroCargasSugerido;
-      }
-    } catch (mlError) {}
-    
-    if (itens && itens.length > 0) {
-      return await calcularNumeroCargasPorProdutosEspeciais(itens);
+    if (!itens || itens.length === 0) {
+      const db = getDatabase();
+      itens = await new Promise((resolve) => {
+        db.all('SELECT * FROM nota_fiscal_itens WHERE notaFiscalId = ?', [notaFiscal.id], (err, rows) => {
+          resolve(rows || []);
+        });
+      });
+    }
+
+    if (itens.length > 0) {
+      const cargasSugeridas = await distribuirItensEntreCargas(itens, 0);
+      return cargasSugeridas.length;
     }
     
     return calcularNumeroCargasHeuristico(notaFiscal);
   } catch (error) {
+    logger.error('Erro ao sugerir cargas:', error);
     return calcularNumeroCargasHeuristico(notaFiscal);
   }
 }
 
 /**
- * Distribui itens entre cargas baseando-se no histórico de faturamento
+ * Busca agrupamentos históricos (conjuntos de produtos que viajam juntos)
+ */
+async function buscarKitsHistoricos() {
+  const db = getDatabase();
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT numeroNotaFiscal, numeroCarga, 
+             GROUP_CONCAT(codigoProduto || ':' || quantidadePorCarga, ',') as kit
+      FROM historico_desmembramentos_reais
+      GROUP BY numeroNotaFiscal, numeroCarga
+    `;
+    db.all(query, [], (err, rows) => {
+      if (err) return resolve([]);
+      const kits = rows.map(r => r.kit.split(',').sort().join('|'));
+      // Contar frequência de cada kit
+      const frequencia = kits.reduce((acc, kit) => {
+        acc[kit] = (acc[kit] || 0) + 1;
+        return acc;
+      }, {});
+      resolve(frequencia);
+    });
+  });
+}
+
+/**
+ * Distribui itens entre cargas baseando-se em padrões de kits históricos
  */
 async function distribuirItensEntreCargas(itens, numeroCargas) {
-  const db = getDatabase();
-  const codigosProdutos = itens.map(item => item.codigoProduto || item.codigoInterno).filter(Boolean);
-  const regras = await buscarRegrasProdutosEspeciais(codigosProdutos);
-  
-  const cargas = Array.from({ length: numeroCargas }, () => ({
-    itens: [],
-    pesoTotal: 0,
-    volumeTotal: 0,
-    valorTotal: 0
-  }));
+  const kitsHistoricos = await buscarKitsHistoricos();
+  const sortedKits = Object.entries(kitsHistoricos).sort((a, b) => b[1] - a[1]);
 
-  // 1. Separar itens especiais (1 por carga)
-  const especiais = [];
-  const normais = [];
-  
-  itens.forEach(item => {
-    const codigo = item.codigoProduto || item.codigoInterno;
-    if (codigo && regras[codigo]) {
-      especiais.push(item);
-    } else {
-      normais.push(item);
-    }
-  });
+  let itensRestantes = itens.map(i => ({ ...i, qtdAtual: i.quantidade }));
+  const cargasSugeridas = [];
 
-  let proximaCarga = 0;
+  // 1. Tentar encontrar Kits exatos do histórico nos itens atuais
+  for (const [kitStr, freq] of sortedKits) {
+    const kitItens = kitStr.split('|').map(k => {
+      const [cod, qtd] = k.split(':');
+      return { codigo: cod, quantidade: parseFloat(qtd) };
+    });
 
-  // 2. Distribuir especiais
-  for (const item of especiais) {
-    for (let i = 0; i < item.quantidade; i++) {
-      if (proximaCarga < numeroCargas) {
-        cargas[proximaCarga].itens.push({ ...item, quantidade: 1 });
-        cargas[proximaCarga].pesoTotal += (item.peso || 0) / item.quantidade;
-        cargas[proximaCarga].volumeTotal += (item.volume || 0) / item.quantidade;
-        cargas[proximaCarga].valorTotal += (item.valorTotal || 0) / item.quantidade;
-        proximaCarga++;
+    // Tentar aplicar este kit enquanto houver itens suficientes
+    let podeAplicar = true;
+    while (podeAplicar) {
+      const novaCarga = { itens: [], pesoTotal: 0, volumeTotal: 0, valorTotal: 0 };
+      let itensParaRemover = [];
+
+      for (const kitItem of kitItens) {
+        const itemNaNota = itensRestantes.find(i => 
+          (i.codigoProduto === kitItem.codigo || i.codigoInterno === kitItem.codigo) && 
+          i.qtdAtual >= kitItem.quantidade
+        );
+
+        if (itemNaNota) {
+          itensParaRemover.push({ item: itemNaNota, qtd: kitItem.quantidade });
+        } else {
+          podeAplicar = false;
+          break;
+        }
+      }
+
+      if (podeAplicar && itensParaRemover.length > 0) {
+        itensParaRemover.forEach(({ item, qtd }) => {
+          const proporcao = qtd / item.quantidade;
+          novaCarga.itens.push({ ...item, quantidade: qtd, valorTotal: item.valorTotal * proporcao });
+          novaCarga.pesoTotal += (item.peso || 0) * proporcao;
+          novaCarga.volumeTotal += (item.volume || 0) * proporcao;
+          novaCarga.valorTotal += (item.valorTotal || 0) * proporcao;
+          item.qtdAtual -= qtd;
+        });
+        cargasSugeridas.push(novaCarga);
       }
     }
   }
 
-  // 3. Distribuir normais tentando agrupar por padrões históricos
-  // Ordenar normais por peso para preencher melhor
-  normais.sort((a, b) => (b.peso || 0) - (a.peso || 0));
-
-  for (const item of normais) {
-    const codigo = item.codigoProduto || item.codigoInterno;
-    const padrao = await buscarPadraoHistoricoProdutoNormal(codigo, item.quantidade);
-    
-    let cargaAlvo = 0;
-    
-    // Se houver histórico de "viajar junto" com outro item já alocado, preferir essa carga
-    // Por enquanto, usamos preenchimento por menor peso/volume para equilibrar
-    cargaAlvo = cargas.reduce((minIdx, carga, idx, arr) => 
-      carga.pesoTotal < arr[minIdx].pesoTotal ? idx : minIdx, 0);
-
-    cargas[cargaAlvo].itens.push(item);
-    cargas[cargaAlvo].pesoTotal += item.peso || 0;
-    cargas[cargaAlvo].volumeTotal += item.volume || 0;
-    cargas[cargaAlvo].valorTotal += item.valorTotal || 0;
+  // 2. Itens que não entraram em kits (ou sobraram) vão para uma carga residual ou distribuídos
+  const residual = itensRestantes.filter(i => i.qtdAtual > 0);
+  if (residual.length > 0) {
+    const cargaResidual = { itens: [], pesoTotal: 0, volumeTotal: 0, valorTotal: 0 };
+    residual.forEach(item => {
+      const proporcao = item.qtdAtual / item.quantidade;
+      cargaResidual.itens.push({ ...item, quantidade: item.qtdAtual, valorTotal: item.valorTotal * proporcao });
+      cargaResidual.pesoTotal += (item.peso || 0) * proporcao;
+      cargaResidual.volumeTotal += (item.volume || 0) * proporcao;
+      cargaResidual.valorTotal += (item.valorTotal || 0) * proporcao;
+    });
+    cargasSugeridas.push(cargaResidual);
   }
-  
-  return cargas;
+
+  return cargasSugeridas;
 }
 
 /**
